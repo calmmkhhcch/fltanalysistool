@@ -1,0 +1,1461 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>航班資料分析工具</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Microsoft JhengHei', sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+            padding: 30px;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #3498db;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 16px;
+        }
+        
+        .upload-section {
+            background-color: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 2px dashed #bdc3c7;
+            text-align: center;
+        }
+        
+        .upload-btn {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 16px;
+            margin: 10px;
+        }
+        
+        .upload-btn:hover {
+            background-color: #2980b9;
+        }
+        
+        .file-name {
+            margin-top: 15px;
+            color: #27ae60;
+            font-weight: bold;
+        }
+        
+        .instructions {
+            background-color: #fff9e6;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #f39c12;
+        }
+        
+        .instructions h3 {
+            color: #d35400;
+            margin-bottom: 10px;
+        }
+        
+        .instructions ul {
+            margin-left: 20px;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        
+        .person-selector {
+            background-color: #eaf2f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            display: none;
+        }
+        
+        .person-selector label {
+            font-weight: bold;
+            margin-right: 10px;
+            color: #2c3e50;
+        }
+        
+        .person-selector select {
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: 1px solid #bdc3c7;
+            font-size: 16px;
+            min-width: 200px;
+            background-color: white;
+        }
+        
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+            display: none;
+        }
+        
+        .summary-item {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            text-align: center;
+            border-top: 4px solid #3498db;
+        }
+        
+        .summary-item h3 {
+            color: #2c3e50;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .summary-item p {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2980b9;
+        }
+        
+        .chart-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            display: none;
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        
+        .chart-header h3 {
+            color: #2c3e50;
+        }
+        
+        .person-name-display {
+            font-size: 20px;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        
+        .person-total-flights {
+            font-size: 20px;
+            font-weight: bold;
+            color: #27ae60;
+        }
+        
+        .chart-wrapper {
+            height: 400px;
+            position: relative;
+        }
+        
+        .month-total {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+            font-weight: bold;
+            display: none;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .status.success {
+            background-color: #d5f4e6;
+            color: #27ae60;
+            border: 1px solid #27ae60;
+        }
+        
+        .status.error {
+            background-color: #fadbd8;
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+        }
+        
+        .status.info {
+            background-color: #d6eaf8;
+            color: #3498db;
+            border: 1px solid #3498db;
+        }
+        
+        .actions {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+            display: none;
+        }
+        
+        .action-btn {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 16px;
+            min-width: 150px;
+        }
+        
+        .action-btn:hover {
+            background-color: #27ae60;
+        }
+        
+        .action-btn:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        
+        .download-btn {
+            background-color: #9b59b6;
+        }
+        
+        .download-btn:hover {
+            background-color: #8e44ad;
+        }
+        
+        .person-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+            display: none;
+        }
+        
+        @media (max-width: 1000px) {
+            .person-details {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .detail-box {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        }
+        
+        .detail-header {
+            background-color: #34495e;
+            color: white;
+            padding: 15px;
+            border-radius: 6px 6px 0 0;
+            font-size: 18px;
+            font-weight: bold;
+            margin: -20px -20px 20px -20px;
+        }
+        
+        .auth-header {
+            background-color: #2c3e50;
+        }
+        
+        .non-auth-header {
+            background-color: #7f8c8d;
+        }
+        
+        .detail-content {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .flight-item {
+            padding: 10px;
+            border-bottom: 1px solid #ecf0f1;
+            margin-bottom: 10px;
+        }
+        
+        .flight-date {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        
+        .flight-info {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .flight-count {
+            display: inline-block;
+            background-color: #e74c3c;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            text-align: center;
+            line-height: 24px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #95a5a6;
+            font-style: italic;
+        }
+        
+        .person-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .person-info-item {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .person-info-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+        
+        .person-info-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .person-info-value.auth {
+            color: #27ae60;
+        }
+        
+        .person-info-value.non-auth {
+            color: #e74c3c;
+        }
+        
+        .name-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .name-tag {
+            background-color: #eaf2f8;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            color: #2c3e50;
+            border: 1px solid #bdc3c7;
+        }
+        
+        .name-tag.auth {
+            background-color: #d5f4e6;
+            border-color: #27ae60;
+        }
+        
+        .name-tag.non-auth {
+            background-color: #fadbd8;
+            border-color: #e74c3c;
+        }
+        
+        .variant-names {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .variant-names span {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>航班資料分析工具</h1>
+            <p class="subtitle">上傳Excel檔案，自動分析航班資料並生成統計圖表</p>
+        </header>
+        
+        <div class="instructions">
+            <h3>使用說明</h3>
+            <ul>
+                <li>上傳Excel檔案（格式需與高雄機務組每日班機動態表相同）</li>
+                <li>系統將自動分析航班資料，區分授權人員（簽放人員）和非授權人員（接機/協助人員）</li>
+                <li>使用下拉式選單選擇人員，查看該人員當月的航班統計圖表</li>
+                <li>系統會自動拆分多人欄位，正確識別每個人名</li>
+                <li>最後可下載包含所有人員航班資料的單一CSV檔案</li>
+            </ul>
+        </div>
+        
+        <div class="upload-section">
+            <h3>請選擇要上傳的Excel檔案</h3>
+            <div class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                選擇檔案
+            </div>
+            <input type="file" id="fileInput" accept=".xlsx, .xls" style="display: none;" onchange="handleFileSelect(event)">
+            <div id="fileName" class="file-name"></div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+            <p>正在分析檔案，請稍候...</p>
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="person-selector" id="personSelector">
+            <label for="personSelect">選擇人員：</label>
+            <select id="personSelect" onchange="selectPerson(this.value)">
+                <option value="">請選擇人員</option>
+                <!-- 人員選項將動態生成 -->
+            </select>
+        </div>
+        
+        <div class="summary" id="summary">
+            <!-- 摘要內容將動態生成 -->
+        </div>
+        
+        <div class="chart-container" id="chartContainer">
+            <div class="chart-header">
+                <h3>航班統計圖表</h3>
+                <div>
+                    <span>人員：</span>
+                    <span class="person-name-display" id="personNameDisplay"></span>
+                    <span style="margin-left: 20px;">總航班數：</span>
+                    <span class="person-total-flights" id="personTotalFlights"></span>
+                </div>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="flightChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="person-details" id="personDetails">
+            <div class="detail-box">
+                <div class="detail-header auth-header">
+                    授權航班資料
+                </div>
+                <div class="detail-content" id="authDetails">
+                    <!-- 授權航班資料將動態生成 -->
+                </div>
+            </div>
+            
+            <div class="detail-box">
+                <div class="detail-header non-auth-header">
+                    非授權航班資料
+                </div>
+                <div class="detail-content" id="nonAuthDetails">
+                    <!-- 非授權航班資料將動態生成 -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="month-total" id="monthTotal">
+            <!-- 當月總航班數將動態生成 -->
+        </div>
+        
+        <div class="actions" id="actions">
+            <button class="action-btn download-btn" id="downloadBtn" onclick="downloadCSV()">
+                下載CSV檔案
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 全局變數
+        let workbook = null;
+        let allData = [];
+        let personList = new Set();
+        let authPersonnel = new Set();
+        let nonAuthPersonnel = new Set();
+        let totalFlights = 0;
+        let flightChart = null;
+        let selectedPerson = '';
+        let personFlightsData = {};
+        
+        // 中文人名常用字（用於識別是否為人名）
+        const commonChineseNames = ['蔡', '陳', '張', '李', '王', '黃', '吳', '劉', '林', '楊', '周', '葉', '江', '余', '郭', '洪', '胡', '蘇', '鍾', '方', '康', '鄭', '施', '浦', '侯', '范', '馮', '嚴', '喬', '游', '龔', '伍', '葉'];
+        
+        // 職務關鍵字過濾列表
+        const positionKeywords = ['代領班', '領班', '組長', '值勤組長', '代組長', '組長/', 'QC', '庫房', '外派', '隨機', 'NIL', '早到先接', '送', '油', '不加', '拖機', '簽', '接機', '簽放人員', '協助人員', '接機人員', '關電', '送車', '用車', '待命', '備勤'];
+        
+        // 處理檔案選擇
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('fileName').textContent = `已選擇檔案: ${file.name}`;
+            showStatus('檔案已選擇，正在分析中...', 'info');
+            
+            // 重置狀態
+            resetAnalysis();
+            
+            // 顯示載入動畫
+            showLoading(true);
+            
+            // 讀取檔案
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    // 讀取Excel檔案
+                    const data = new Uint8Array(e.target.result);
+                    workbook = XLSX.read(data, {type: 'array'});
+                    
+                    // 分析檔案
+                    analyzeWorkbook(workbook);
+                    
+                    showLoading(false);
+                    
+                } catch (error) {
+                    console.error('分析檔案時發生錯誤:', error);
+                    showStatus('分析檔案時發生錯誤: ' + error.message, 'error');
+                    showLoading(false);
+                }
+            };
+            
+            reader.onerror = function() {
+                showStatus('讀取檔案時發生錯誤', 'error');
+                showLoading(false);
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+        
+        // 重置分析狀態
+        function resetAnalysis() {
+            workbook = null;
+            allData = [];
+            personList.clear();
+            authPersonnel.clear();
+            nonAuthPersonnel.clear();
+            totalFlights = 0;
+            selectedPerson = '';
+            personFlightsData = {};
+            
+            // 清除圖表
+            if (flightChart) {
+                flightChart.destroy();
+                flightChart = null;
+            }
+            
+            // 隱藏所有區塊
+            document.getElementById('personSelector').style.display = 'none';
+            document.getElementById('summary').style.display = 'none';
+            document.getElementById('chartContainer').style.display = 'none';
+            document.getElementById('personDetails').style.display = 'none';
+            document.getElementById('monthTotal').style.display = 'none';
+            document.getElementById('actions').style.display = 'none';
+            
+            // 清空顯示內容
+            document.getElementById('personSelect').innerHTML = '<option value="">請選擇人員</option>';
+            document.getElementById('personNameDisplay').textContent = '';
+            document.getElementById('personTotalFlights').textContent = '';
+            document.getElementById('authDetails').innerHTML = '';
+            document.getElementById('nonAuthDetails').innerHTML = '';
+        }
+        
+        // 分析工作簿
+        function analyzeWorkbook(workbook) {
+            // 重置資料
+            allData = [];
+            personList.clear();
+            authPersonnel.clear();
+            nonAuthPersonnel.clear();
+            totalFlights = 0;
+            personFlightsData = {};
+            
+            // 遍歷所有工作表
+            workbook.SheetNames.forEach(sheetName => {
+                // 只處理12月的工作表 (1201, 1202, ..., 1231)
+                if (sheetName.match(/^12[0-9]{2}$/)) {
+                    const worksheet = workbook.Sheets[sheetName];
+                    processWorksheet(worksheet, sheetName);
+                }
+            });
+            
+            // 更新UI
+            updateUI();
+            
+            showStatus(`分析完成！共處理 ${allData.length} 筆航班資料`, 'success');
+        }
+        
+        // 處理單個工作表
+        function processWorksheet(worksheet, sheetName) {
+            try {
+                // 將工作表轉換為JSON
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                
+                if (!jsonData || jsonData.length < 4) {
+                    console.warn(`工作表 ${sheetName} 資料不足`);
+                    return;
+                }
+                
+                // 提取日期
+                const date = extractDate(sheetName, jsonData);
+                
+                // 從第4行開始是航班資料（跳過表頭）
+                for (let i = 3; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    
+                    // 檢查是否為有效的航班資料行（有機號）
+                    if (row && row[0] && typeof row[0] === 'string' && row[0].trim() && !row[0].includes('機號')) {
+                        processFlightRow(row, date);
+                        totalFlights++;
+                    }
+                }
+                
+            } catch (error) {
+                console.error(`處理工作表 ${sheetName} 時發生錯誤:`, error);
+            }
+        }
+        
+        // 提取日期
+        function extractDate(sheetName, jsonData) {
+            // 從工作表名稱提取日期
+            const month = sheetName.substring(0, 2);
+            const day = sheetName.substring(2, 4);
+            return `${month}/${day}`;
+        }
+        
+        // 處理航班資料行
+        function processFlightRow(row, date) {
+            // 提取航班資料
+            const flightData = {
+                日期: date,
+                機號: row[0] || '',
+                B_G: row[1] || '',
+                機型: row[2] || '',
+                檢查: row[3] || '',
+                入境: row[4] || '',
+                出境: row[5] || '',
+                STA: row[6] || '',
+                STD: row[7] || '',
+                來自: row[8] || '',
+                飛往: row[9] || '',
+                簽放人員: row[10] || '',
+                接機人員: row[11] || '',
+                REMARK: row[12] || ''
+            };
+            
+            // 處理授權人員（簽放人員）- 拆分多人情況
+            const authPersonnelStr = flightData.簽放人員 || '';
+            if (authPersonnelStr) {
+                const personnelList = extractPersonnel(authPersonnelStr);
+                
+                personnelList.forEach(person => {
+                    if (person) {
+                        // 規範化人名
+                        const normalizedPerson = normalizePersonName(person);
+                        
+                        // 再次檢查是否為有效人名（避免"關電"等漏網之魚）
+                        if (!normalizedPerson || !isValidPerson(normalizedPerson) || normalizedPerson === '關電') {
+                            return;
+                        }
+                        
+                        // 添加到人員列表
+                        personList.add(normalizedPerson);
+                        authPersonnel.add(normalizedPerson);
+                        
+                        // 添加到所有資料
+                        const record = {
+                            ...flightData,
+                            人員: normalizedPerson,
+                            人員類型: '授權人員',
+                            原始名稱: person // 保留原始名稱用於顯示
+                        };
+                        allData.push(record);
+                        
+                        // 更新人員航班數據
+                        updatePersonFlightsData(person, normalizedPerson, date, record, 'auth');
+                    }
+                });
+            }
+            
+            // 處理非授權人員（接機人員）- 拆分多人情況
+            const nonAuthPersonnelStr = flightData.接機人員 || '';
+            if (nonAuthPersonnelStr) {
+                const personnelList = extractPersonnel(nonAuthPersonnelStr);
+                
+                personnelList.forEach(person => {
+                    if (person) {
+                        // 規範化人名
+                        const normalizedPerson = normalizePersonName(person);
+                        
+                        // 再次檢查是否為有效人名（避免"關電"等漏網之魚）
+                        if (!normalizedPerson || !isValidPerson(normalizedPerson) || normalizedPerson === '關電') {
+                            return;
+                        }
+                        
+                        // 添加到人員列表
+                        personList.add(normalizedPerson);
+                        nonAuthPersonnel.add(normalizedPerson);
+                        
+                        // 添加到所有資料
+                        const record = {
+                            ...flightData,
+                            人員: normalizedPerson,
+                            人員類型: '非授權人員',
+                            原始名稱: person // 保留原始名稱用於顯示
+                        };
+                        allData.push(record);
+                        
+                        // 更新人員航班數據
+                        updatePersonFlightsData(person, normalizedPerson, date, record, 'nonAuth');
+                    }
+                });
+            }
+        }
+        
+        // 從字串中提取人員名單（支持多人）
+        function extractPersonnel(personnelStr) {
+            if (!personnelStr || typeof personnelStr !== 'string') {
+                return [];
+            }
+            
+            let cleanedStr = personnelStr.toString();
+            
+            // 優先處理特殊情況：如果整個字符串就是"關電"或包含"關電"，直接返回空陣列
+            if (cleanedStr.trim() === '關電' || cleanedStr.trim() === '關電送車' || cleanedStr.trim() === '關電用車' || 
+                cleanedStr.trim() === '關電 ' || cleanedStr.trim() === ' 關電') {
+                return [];
+            }
+            
+            // 移除常見的固定模式
+            const commonPatterns = [
+                /關電[送車用車待命備勤]?/gi,  // 移除"關電"及相關組合
+                /送車|用車|待命|備勤|公差|公出|公假|調度/g,
+                /[A-Z][A-Z]\d{4}/g,  // 移除如"AA1234"格式的內容
+                /\d{1,2}:\d{2}/g,    // 移除時間格式
+                /加班|值班|請假|休假|病假|事假/g,
+            ];
+            
+            commonPatterns.forEach(pattern => {
+                cleanedStr = cleanedStr.replace(pattern, '');
+            });
+            
+            // 如果處理後為空，直接返回
+            if (!cleanedStr.trim()) {
+                return [];
+            }
+            
+            // 移除數字
+            cleanedStr = cleanedStr.replace(/[0-9]/g, '');
+            
+            // 移除特殊符號但保留可能的分隔符
+            cleanedStr = cleanedStr.replace(/[()\[\]{}【】]/g, '');
+            
+            // 先移除所有職務關鍵字（包括"關電"）
+            positionKeywords.forEach(keyword => {
+                const regex = new RegExp(keyword, 'gi');
+                cleanedStr = cleanedStr.replace(regex, '');
+            });
+            
+            // 新增動作詞彙過濾（包括"關電"）
+            const actionKeywords = ['關電', '送車', '用車', '送', '油', '簽', '機', '班', '組', '長', 'Q', 'C', '庫', '房', '不加', '拖機', '外派', '隨機', '車', '電', '領', '員', '人員'];
+            actionKeywords.forEach(keyword => {
+                const regex = new RegExp(keyword, 'gi');
+                cleanedStr = cleanedStr.replace(regex, '');
+            });
+            
+            // 再次檢查是否包含"關電"，如果有則移除
+            if (cleanedStr.includes('關電')) {
+                cleanedStr = cleanedStr.replace(/關電/g, '');
+            }
+            
+            // 如果處理後為空，直接返回
+            if (!cleanedStr.trim()) {
+                return [];
+            }
+            
+            // 首先嘗試使用正則表達式提取中文人名（2-3個中文字）
+            const chineseNameRegex = /[\u4e00-\u9fa5]{2,3}/g;
+            const foundNames = cleanedStr.match(chineseNameRegex) || [];
+            
+            // 如果正則表達式找到了名字，清理後返回
+            if (foundNames.length > 0) {
+                const cleanedNames = foundNames.map(name => cleanName(name))
+                                              .filter(name => name && isValidPerson(name) && name !== '關電');
+                return cleanedNames;
+            }
+            
+            // 如果沒有找到，使用多種分隔符分割
+            const separators = ['/', '、', ' ', '，', ',', '及', '與', '//', '／', '、', '　'];
+            let names = [cleanedStr];
+            
+            separators.forEach(sep => {
+                const newNames = [];
+                names.forEach(name => {
+                    if (name.includes(sep)) {
+                        const splitNames = name.split(sep)
+                            .map(n => n.trim())
+                            .filter(n => n);
+                        newNames.push(...splitNames);
+                    } else {
+                        newNames.push(name);
+                    }
+                });
+                names = newNames;
+            });
+            
+            // 清理每個名字
+            const cleanedNames = names.map(name => cleanName(name))
+                                     .filter(name => name && isValidPerson(name) && name !== '關電');
+            
+            return cleanedNames;
+        }
+        
+        // 清理姓名
+        function cleanName(name) {
+            if (!name) return '';
+            
+            // 去除前後空格
+            name = name.trim();
+            
+            // 去除名字內部的空格
+            name = name.replace(/\s+/g, '');
+            
+            // 去除常見的稱謂或後綴
+            const suffixes = ['先生', '小姐', '女士', '老師', '主任', '經理', '課長', '大哥', '大姊', '兄', '姐'];
+            suffixes.forEach(suffix => {
+                if (name.endsWith(suffix)) {
+                    name = name.substring(0, name.length - suffix.length);
+                }
+            });
+            
+            // 檢查是否為2-3個中文字
+            const chineseRegex = /^[\u4e00-\u9fa5]{2,3}$/;
+            if (chineseRegex.test(name)) {
+                return name;
+            }
+            
+            return '';
+        }
+        
+        // 檢查是否為有效人名
+        function isValidPerson(name) {
+            if (!name || name.length < 2 || name.length > 3) return false;
+            
+            // 檢查是否全部為中文字符
+            const chineseRegex = /^[\u4e00-\u9fa5]+$/;
+            if (!chineseRegex.test(name)) return false;
+            
+            // 檢查是否為職務
+            if (isPosition(name)) return false;
+            
+            // 檢查是否為常見的非人名詞彙（包括"關電"）
+            const nonPersonKeywords = ['關電', '送車', '用車', '待命', '備勤', '公差', '公出', '公假', '調度', 'NIL', '不加', '加班', '值班', '請假', '休假', '病假', '事假'];
+            if (nonPersonKeywords.includes(name)) return false;
+            
+            // 檢查是否包含非人名字元
+            const nonNameChars = ['電', '車', '油', '送', '簽', '機', '班', '組', '長', 'Q', 'C', '庫', '房'];
+            if (nonNameChars.some(char => name.includes(char))) {
+                // 如果包含非人名字元，只接受常見姓氏開頭的名字
+                const firstChar = name.charAt(0);
+                const isCommonSurname = commonChineseNames.includes(firstChar);
+                if (!isCommonSurname) return false;
+            }
+            
+            // 檢查第一個字是否為常見姓氏
+            const firstChar = name.charAt(0);
+            const isCommonSurname = commonChineseNames.includes(firstChar);
+            
+            // 如果是常見姓氏，接受
+            // 如果不是常見姓氏，但長度為2或3，我們也接受（因為可能有少見姓氏）
+            return isCommonSurname || name.length >= 2;
+        }
+        
+        // 檢查是否為職務名稱
+        function isPosition(str) {
+            const lowerStr = str.toLowerCase();
+            return positionKeywords.some(keyword => 
+                lowerStr.includes(keyword.toLowerCase()) || 
+                str.includes(keyword)
+            );
+        }
+        
+        // 規範化人員名稱
+        function normalizePersonName(name) {
+            if (!name) return '';
+            
+            // 去除所有空格
+            name = name.replace(/\s+/g, '');
+            
+            // 如果有括號內容，移除括號內容
+            name = name.replace(/[\(\[（].*?[\)\]）]/g, '');
+            
+            // 如果名字中包含"關電"，直接返回空字符串
+            if (name.includes('關電')) {
+                return '';
+            }
+            
+            // 提取中文字
+            const chineseChars = name.match(/[\u4e00-\u9fa5]/g) || [];
+            
+            if (chineseChars.length >= 2 && chineseChars.length <= 3) {
+                const normalizedName = chineseChars.slice(0, 3).join('');
+                
+                // 再次檢查是否為非人名詞彙
+                const nonPersonKeywords = ['關電', '送車', '用車', '待命', '備勤'];
+                if (nonPersonKeywords.includes(normalizedName)) {
+                    return '';
+                }
+                
+                return normalizedName;
+            }
+            
+            return name;
+        }
+        
+        // 更新人員航班數據
+        function updatePersonFlightsData(originalName, normalizedName, date, flightRecord, type) {
+            if (!personFlightsData[normalizedName]) {
+                personFlightsData[normalizedName] = {
+                    originalNames: new Set([originalName]),
+                    authFlights: {},
+                    nonAuthFlights: {},
+                    totalFlights: 0,
+                    authCount: 0,
+                    nonAuthCount: 0
+                };
+            } else {
+                // 添加原始名稱變體
+                personFlightsData[normalizedName].originalNames.add(originalName);
+            }
+            
+            if (type === 'auth') {
+                if (!personFlightsData[normalizedName].authFlights[date]) {
+                    personFlightsData[normalizedName].authFlights[date] = [];
+                }
+                personFlightsData[normalizedName].authFlights[date].push(flightRecord);
+                personFlightsData[normalizedName].authCount++;
+            } else {
+                if (!personFlightsData[normalizedName].nonAuthFlights[date]) {
+                    personFlightsData[normalizedName].nonAuthFlights[date] = [];
+                }
+                personFlightsData[normalizedName].nonAuthFlights[date].push(flightRecord);
+                personFlightsData[normalizedName].nonAuthCount++;
+            }
+            
+            personFlightsData[normalizedName].totalFlights++;
+        }
+        
+        // 更新UI
+        function updateUI() {
+            // 更新摘要
+            updateSummary();
+            
+            // 更新人員選擇下拉選單
+            updatePersonSelect();
+            
+            // 顯示當月總航班數
+            updateMonthTotal();
+            
+            // 顯示UI區塊
+            document.getElementById('summary').style.display = 'grid';
+            document.getElementById('personSelector').style.display = 'block';
+            document.getElementById('monthTotal').style.display = 'block';
+            document.getElementById('actions').style.display = 'flex';
+            
+            // 如果只有一個人，自動選擇
+            if (personList.size === 1) {
+                const firstPerson = Array.from(personList)[0];
+                selectPerson(firstPerson);
+            }
+        }
+        
+        // 更新摘要
+        function updateSummary() {
+            const summaryDiv = document.getElementById('summary');
+            
+            // 計算授權人員和非授權人員的重疊人數
+            let overlapCount = 0;
+            authPersonnel.forEach(person => {
+                if (nonAuthPersonnel.has(person)) {
+                    overlapCount++;
+                }
+            });
+            
+            summaryDiv.innerHTML = `
+                <div class="summary-item">
+                    <h3>處理天數</h3>
+                    <p>${new Set(allData.map(d => d.日期)).size}</p>
+                </div>
+                <div class="summary-item">
+                    <h3>總人員數</h3>
+                    <p>${personList.size}</p>
+                </div>
+                <div class="summary-item">
+                    <h3>授權人員數</h3>
+                    <p>${authPersonnel.size}</p>
+                </div>
+                <div class="summary-item">
+                    <h3>非授權人員數</h3>
+                    <p>${nonAuthPersonnel.size}</p>
+                </div>
+                <div class="summary-item">
+                    <h3>總航班數</h3>
+                    <p>${totalFlights}</p>
+                </div>
+            `;
+            
+            // 顯示人員名單
+            const authNames = Array.from(authPersonnel).sort();
+            const nonAuthNames = Array.from(nonAuthPersonnel).sort();
+            
+            // 在摘要下方顯示人員名單
+            const namesSection = document.createElement('div');
+            namesSection.className = 'person-info';
+            namesSection.style.marginTop = '20px';
+            namesSection.style.padding = '20px';
+            namesSection.style.backgroundColor = '#f8f9fa';
+            namesSection.style.borderRadius = '8px';
+            namesSection.style.display = 'block';
+            
+            namesSection.innerHTML = `
+                <div style="flex: 1;">
+                    <h4 style="color: #27ae60; margin-bottom: 10px;">授權人員名單 (${authNames.length})</h4>
+                    <div class="name-list">
+                        ${authNames.map(name => `<span class="name-tag auth">${name}</span>`).join('')}
+                    </div>
+                </div>
+                <div style="flex: 1; margin-top: 20px;">
+                    <h4 style="color: #e74c3c; margin-bottom: 10px;">非授權人員名單 (${nonAuthNames.length})</h4>
+                    <div class="name-list">
+                        ${nonAuthNames.map(name => `<span class="name-tag non-auth">${name}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+            
+            summaryDiv.appendChild(namesSection);
+        }
+        
+        // 更新人員選擇下拉選單
+        function updatePersonSelect() {
+            const personSelect = document.getElementById('personSelect');
+            
+            // 清除現有選項（保留第一個）
+            personSelect.innerHTML = '<option value="">請選擇人員</option>';
+            
+            // 對人員按姓名排序
+            const sortedPersonnel = Array.from(personList)
+                .filter(person => person && person.trim() && person !== '關電')
+                .sort();
+            
+            sortedPersonnel.forEach(person => {
+                if (person && person !== '關電') {
+                    const option = document.createElement('option');
+                    option.value = person;
+                    option.textContent = person;
+                    personSelect.appendChild(option);
+                }
+            });
+        }
+        
+        // 更新當月總航班數
+        function updateMonthTotal() {
+            document.getElementById('monthTotal').innerHTML = `當月總航班數: ${totalFlights} 個航班`;
+        }
+        
+        // 選擇人員
+        function selectPerson(personName) {
+            if (!personName) {
+                document.getElementById('chartContainer').style.display = 'none';
+                document.getElementById('personDetails').style.display = 'none';
+                return;
+            }
+            
+            selectedPerson = personName;
+            
+            // 更新顯示
+            document.getElementById('personNameDisplay').textContent = personName;
+            
+            // 顯示圖表和詳細資料
+            document.getElementById('chartContainer').style.display = 'block';
+            document.getElementById('personDetails').style.display = 'grid';
+            
+            // 更新圖表
+            updateChart(personName);
+            
+            // 更新詳細資料
+            updatePersonDetails(personName);
+        }
+        
+        // 更新圖表
+        function updateChart(personName) {
+            const ctx = document.getElementById('flightChart').getContext('2d');
+            
+            // 銷毀現有圖表
+            if (flightChart) {
+                flightChart.destroy();
+            }
+            
+            // 獲取人員數據
+            const personData = personFlightsData[personName] || {
+                originalNames: new Set(),
+                authFlights: {},
+                nonAuthFlights: {},
+                totalFlights: 0,
+                authCount: 0,
+                nonAuthCount: 0
+            };
+            
+            // 更新總航班數顯示
+            document.getElementById('personTotalFlights').textContent = personData.totalFlights;
+            
+            // 準備圖表數據
+            const allDates = Array.from(new Set([
+                ...Object.keys(personData.authFlights),
+                ...Object.keys(personData.nonAuthFlights)
+            ])).sort((a, b) => {
+                const [aMonth, aDay] = a.split('/').map(Number);
+                const [bMonth, bDay] = b.split('/').map(Number);
+                return (aMonth * 100 + aDay) - (bMonth * 100 + bDay);
+            });
+            
+            // 準備授權航班數數據
+            const authCounts = allDates.map(date => 
+                personData.authFlights[date] ? personData.authFlights[date].length : 0
+            );
+            
+            // 準備非授權航班數數據
+            const nonAuthCounts = allDates.map(date => 
+                personData.nonAuthFlights[date] ? personData.nonAuthFlights[date].length : 0
+            );
+            
+            // 創建圖表
+            flightChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: allDates,
+                    datasets: [
+                        {
+                            label: '授權航班',
+                            data: authCounts,
+                            backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '非授權航班',
+                            data: nonAuthCounts,
+                            backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '航班數'
+                            },
+                            ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: '日期'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += context.parsed.y + ' 個航班';
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 更新人員詳細資料
+        function updatePersonDetails(personName) {
+            const personData = personFlightsData[personName] || {
+                originalNames: new Set(),
+                authFlights: {},
+                nonAuthFlights: {},
+                totalFlights: 0,
+                authCount: 0,
+                nonAuthCount: 0
+            };
+            
+            const authDetails = document.getElementById('authDetails');
+            const nonAuthDetails = document.getElementById('nonAuthDetails');
+            
+            // 顯示原始名稱變體（如果有）
+            const originalNames = Array.from(personData.originalNames || new Set([personName]));
+            
+            // 授權航班資料
+            if (personData.authCount > 0) {
+                let authHTML = `
+                    <div class="person-info">
+                        <div class="person-info-item">
+                            <div class="person-info-label">授權航班數</div>
+                            <div class="person-info-value auth">${personData.authCount}</div>
+                        </div>
+                        <div class="person-info-item">
+                            <div class="person-info-label">涉及天數</div>
+                            <div class="person-info-value">${Object.keys(personData.authFlights).length}</div>
+                        </div>
+                    </div>
+                `;
+                
+                // 顯示原始名稱變體
+                if (originalNames.length > 1) {
+                    authHTML += `
+                        <div class="variant-names">
+                            原始名稱變體: <span>${originalNames.join(', ')}</span>
+                        </div>
+                    `;
+                }
+                
+                const authDates = Object.keys(personData.authFlights).sort((a, b) => {
+                    const [aMonth, aDay] = a.split('/').map(Number);
+                    const [bMonth, bDay] = b.split('/').map(Number);
+                    return (aMonth * 100 + aDay) - (bMonth * 100 + bDay);
+                });
+                
+                authDates.forEach(date => {
+                    const flights = personData.authFlights[date];
+                    authHTML += `
+                        <div class="flight-item">
+                            <div class="flight-date">
+                                ${date} <span class="flight-count">${flights.length}</span>
+                            </div>
+                            ${flights.map(flight => `
+                                <div class="flight-info">
+                                    ${flight.機號} | ${flight.機型} | ${flight.檢查} | 
+                                    ${flight.入境 ? '入境:' + flight.入境 : ''}${flight.出境 ? ' 出境:' + flight.出境 : ''} | 
+                                    ${flight.來自 ? '來自:' + flight.來自 : ''}${flight.飛往 ? ' 飛往:' + flight.飛往 : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                });
+                
+                authDetails.innerHTML = authHTML;
+            } else {
+                authDetails.innerHTML = '<div class="no-data">無授權航班資料</div>';
+            }
+            
+            // 非授權航班資料
+            if (personData.nonAuthCount > 0) {
+                let nonAuthHTML = `
+                    <div class="person-info">
+                        <div class="person-info-item">
+                            <div class="person-info-label">非授權航班數</div>
+                            <div class="person-info-value non-auth">${personData.nonAuthCount}</div>
+                        </div>
+                        <div class="person-info-item">
+                            <div class="person-info-label">涉及天數</div>
+                            <div class="person-info-value">${Object.keys(personData.nonAuthFlights).length}</div>
+                        </div>
+                    </div>
+                `;
+                
+                // 顯示原始名稱變體
+                if (originalNames.length > 1) {
+                    nonAuthHTML += `
+                        <div class="variant-names">
+                            原始名稱變體: <span>${originalNames.join(', ')}</span>
+                        </div>
+                    `;
+                }
+                
+                const nonAuthDates = Object.keys(personData.nonAuthFlights).sort((a, b) => {
+                    const [aMonth, aDay] = a.split('/').map(Number);
+                    const [bMonth, bDay] = b.split('/').map(Number);
+                    return (aMonth * 100 + aDay) - (bMonth * 100 + bDay);
+                });
+                
+                nonAuthDates.forEach(date => {
+                    const flights = personData.nonAuthFlights[date];
+                    nonAuthHTML += `
+                        <div class="flight-item">
+                            <div class="flight-date">
+                                ${date} <span class="flight-count">${flights.length}</span>
+                            </div>
+                            ${flights.map(flight => `
+                                <div class="flight-info">
+                                    ${flight.機號} | ${flight.機型} | ${flight.檢查} | 
+                                    ${flight.入境 ? '入境:' + flight.入境 : ''}${flight.出境 ? ' 出境:' + flight.出境 : ''} | 
+                                    ${flight.來自 ? '來自:' + flight.來自 : ''}${flight.飛往 ? ' 飛往:' + flight.飛往 : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                });
+                
+                nonAuthDetails.innerHTML = nonAuthHTML;
+            } else {
+                nonAuthDetails.innerHTML = '<div class="no-data">無非授權航班資料</div>';
+            }
+        }
+        
+        // 下載CSV檔案
+        function downloadCSV() {
+            if (allData.length === 0) {
+                showStatus('沒有資料可下載', 'error');
+                return;
+            }
+            
+            // 建立CSV內容
+            let csvContent = "日期,人員,人員類型,機號,B/G,機型,檢查,入境,出境,STA,STD,來自,飛往,備註\n";
+            
+            // 對資料按日期和人員排序
+            const sortedData = [...allData].sort((a, b) => {
+                // 先按日期排序
+                const [aMonth, aDay] = a.日期.split('/').map(Number);
+                const [bMonth, bDay] = b.日期.split('/').map(Number);
+                const dateCompare = (aMonth * 100 + aDay) - (bMonth * 100 + bDay);
+                
+                if (dateCompare !== 0) return dateCompare;
+                
+                // 再按人員類型排序（授權人員優先）
+                const typeCompare = b.人員類型.localeCompare(a.人員類型);
+                if (typeCompare !== 0) return typeCompare;
+                
+                // 最後按人員姓名排序
+                return a.人員.localeCompare(b.人員);
+            });
+            
+            sortedData.forEach(item => {
+                // CSV格式：日期,人員,人員類型,機號,B/G,機型,檢查,入境,出境,STA,STD,來自,飛往,備註
+                // 所有欄位用引號包起來，因為可能包含逗號
+                csvContent += `"${item.日期}","${item.人員}","${item.人員類型}","${item.機號}","${item.B_G}","${item.機型}","${item.檢查}","${item.入境}","${item.出境}","${item.STA}","${item.STD}","${item.來自}","${item.飛往}","${item.REMARK || ''}"\n`;
+            });
+            
+            // 建立下載連結
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            
+            // 取得檔案名稱
+            const originalFileName = document.getElementById('fileInput').files[0]?.name || '航班資料';
+            const fileName = originalFileName.replace(/\.[^/.]+$/, "") + '_航班分析.csv';
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showStatus(`CSV檔案已準備下載: ${fileName}`, 'success');
+        }
+        
+        // 顯示載入狀態
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+        
+        // 顯示狀態訊息
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+        }
+        
+        // 初始化頁面
+        document.addEventListener('DOMContentLoaded', function() {
+            // 綁定檔案選擇事件
+            document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+        });
+    </script>
+</body>
+</html>
