@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -442,6 +442,42 @@
             font-weight: bold;
             color: #e74c3c;
         }
+        
+        .file-info {
+            background-color: #e8f4fc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+        
+        .file-info div {
+            margin-bottom: 5px;
+        }
+        
+        .debug-info {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 12px;
+            color: #666;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .debug-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #e74c3c;
+        }
+        
+        .debug-item {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-bottom: 1px dashed #ddd;
+        }
     </style>
 </head>
 <body>
@@ -547,12 +583,14 @@
         let flightChart = null;
         let selectedPerson = '';
         let personFlightsData = {};
+        let processedSheets = [];
+        let debugLog = []; // 除錯日誌
         
         // 中文人名常用字（用於識別是否為人名）
         const commonChineseNames = ['蔡', '陳', '張', '李', '王', '黃', '吳', '劉', '林', '楊', '周', '葉', '江', '余', '郭', '洪', '胡', '蘇', '鍾', '方', '康', '鄭', '施', '浦', '侯', '范', '馮', '嚴', '喬', '游', '龔', '伍', '葉'];
         
-        // 職務關鍵字過濾列表
-        const positionKeywords = ['代領班', '領班', '組長', '值勤組長', '代組長', '組長/', 'QC', '庫房', '外派', '隨機', 'NIL', '早到先接', '送', '油', '不加', '拖機', '簽', '接機', '簽放人員', '協助人員', '接機人員', '關電', '送車', '用車', '待命', '備勤'];
+        // 職務關鍵字過濾列表 - 增加"先接"和"發證室"
+        const positionKeywords = ['代領班', '領班', '組長', '值勤組長', '代組長', '組長/', 'QC', '庫房', '外派', '隨機', 'NIL', '早到先接', '送', '油', '不加', '拖機', '簽', '接機', '簽放人員', '協助人員', '接機人員', '關電', '送車', '用車', '待命', '備勤', '先接', '發證室', '帶除蟲', '機務組'];
         
         // 處理檔案選擇
         function handleFileSelect(event) {
@@ -607,6 +645,8 @@
             totalFlights = 0;
             selectedPerson = '';
             personFlightsData = {};
+            processedSheets = [];
+            debugLog = [];
             
             // 清除圖表
             if (flightChart) {
@@ -639,20 +679,44 @@
             nonAuthPersonnel.clear();
             totalFlights = 0;
             personFlightsData = {};
+            processedSheets = [];
+            debugLog = [];
+            
+            // 除錯日誌
+            addDebugLog(`開始分析工作簿，共有 ${workbook.SheetNames.length} 個工作表`);
             
             // 遍歷所有工作表
             workbook.SheetNames.forEach(sheetName => {
-                // 只處理12月的工作表 (1201, 1202, ..., 1231)
-                if (sheetName.match(/^12[0-9]{2}$/)) {
+                // 處理所有月份的工作表 (0101, 0102, ..., 1231)
+                if (sheetName.match(/^[0-9]{4}$/)) {
                     const worksheet = workbook.Sheets[sheetName];
+                    addDebugLog(`處理工作表: ${sheetName}`);
                     processWorksheet(worksheet, sheetName);
+                    processedSheets.push(sheetName);
+                } else {
+                    addDebugLog(`跳過非標準工作表名稱: ${sheetName}`);
                 }
             });
+            
+            // 如果沒有處理任何工作表，嘗試其他格式
+            if (processedSheets.length === 0) {
+                addDebugLog('未找到標準工作表名稱，嘗試處理所有工作表');
+                // 嘗試處理其他可能的工作表名稱格式
+                workbook.SheetNames.forEach(sheetName => {
+                    const worksheet = workbook.Sheets[sheetName];
+                    addDebugLog(`嘗試處理工作表: ${sheetName}`);
+                    processWorksheet(worksheet, sheetName);
+                    processedSheets.push(sheetName);
+                });
+            }
             
             // 更新UI
             updateUI();
             
-            showStatus(`分析完成！共處理 ${allData.length} 筆航班資料`, 'success');
+            showStatus(`分析完成！共處理 ${allData.length} 筆航班資料，來自 ${processedSheets.length} 個工作表`, 'success');
+            
+            // 顯示除錯日誌
+            displayDebugLog();
         }
         
         // 處理單個工作表
@@ -662,7 +726,7 @@
                 const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
                 
                 if (!jsonData || jsonData.length < 4) {
-                    console.warn(`工作表 ${sheetName} 資料不足`);
+                    addDebugLog(`工作表 ${sheetName} 資料不足，跳過`);
                     return;
                 }
                 
@@ -682,15 +746,40 @@
                 
             } catch (error) {
                 console.error(`處理工作表 ${sheetName} 時發生錯誤:`, error);
+                addDebugLog(`處理工作表 ${sheetName} 時發生錯誤: ${error.message}`);
             }
         }
         
         // 提取日期
         function extractDate(sheetName, jsonData) {
-            // 從工作表名稱提取日期
-            const month = sheetName.substring(0, 2);
-            const day = sheetName.substring(2, 4);
-            return `${month}/${day}`;
+            // 嘗試從工作表名稱提取日期
+            if (sheetName.match(/^[0-9]{4}$/)) {
+                const month = sheetName.substring(0, 2);
+                const day = sheetName.substring(2, 4);
+                return `${month}/${day}`;
+            }
+            
+            // 如果工作表名稱不是數字格式，嘗試從第一行提取
+            try {
+                if (jsonData && jsonData.length > 0) {
+                    const firstRow = jsonData[0];
+                    if (firstRow && firstRow.length > 0) {
+                        const dateStr = String(firstRow[0]);
+                        // 嘗試提取日期格式
+                        const dateMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})/);
+                        if (dateMatch) {
+                            const month = dateMatch[1].padStart(2, '0');
+                            const day = dateMatch[2].padStart(2, '0');
+                            return `${month}/${day}`;
+                        }
+                    }
+                }
+            } catch (e) {
+                addDebugLog(`無法從工作表 ${sheetName} 提取日期: ${e.message}`);
+            }
+            
+            // 如果都失敗，使用工作表名稱
+            return sheetName;
         }
         
         // 處理航班資料行
@@ -723,8 +812,11 @@
                         // 規範化人名
                         const normalizedPerson = normalizePersonName(person);
                         
-                        // 再次檢查是否為有效人名（避免"關電"等漏網之魚）
-                        if (!normalizedPerson || !isValidPerson(normalizedPerson) || normalizedPerson === '關電') {
+                        // 再次檢查是否為有效人名
+                        if (!normalizedPerson || !isValidPerson(normalizedPerson) || 
+                            normalizedPerson === '關電' || normalizedPerson === '先接' || 
+                            normalizedPerson === '發證室' || normalizedPerson === '帶除蟲') {
+                            addDebugLog(`過濾非人名詞彙: ${person} -> ${normalizedPerson} (授權)`);
                             return;
                         }
                         
@@ -757,8 +849,11 @@
                         // 規範化人名
                         const normalizedPerson = normalizePersonName(person);
                         
-                        // 再次檢查是否為有效人名（避免"關電"等漏網之魚）
-                        if (!normalizedPerson || !isValidPerson(normalizedPerson) || normalizedPerson === '關電') {
+                        // 再次檢查是否為有效人名
+                        if (!normalizedPerson || !isValidPerson(normalizedPerson) || 
+                            normalizedPerson === '關電' || normalizedPerson === '先接' || 
+                            normalizedPerson === '發證室' || normalizedPerson === '帶除蟲') {
+                            addDebugLog(`過濾非人名詞彙: ${person} -> ${normalizedPerson} (非授權)`);
                             return;
                         }
                         
@@ -789,16 +884,18 @@
             }
             
             let cleanedStr = personnelStr.toString();
+            addDebugLog(`原始人員字串: "${personnelStr}"`);
             
-            // 優先處理特殊情況：如果整個字符串就是"關電"或包含"關電"，直接返回空陣列
-            if (cleanedStr.trim() === '關電' || cleanedStr.trim() === '關電送車' || cleanedStr.trim() === '關電用車' || 
-                cleanedStr.trim() === '關電 ' || cleanedStr.trim() === ' 關電') {
+            // 優先處理特殊情況：如果整個字符串就是非人名詞彙，直接返回空陣列
+            const nonPersonWords = ['關電', '先接', '發證室', '帶除蟲', '送車', '用車', '待命', '備勤'];
+            if (nonPersonWords.some(word => cleanedStr.trim() === word)) {
+                addDebugLog(`整個字串為非人名詞彙: "${cleanedStr}"，跳過`);
                 return [];
             }
             
             // 移除常見的固定模式
             const commonPatterns = [
-                /關電[送車用車待命備勤]?/gi,  // 移除"關電"及相關組合
+                /關電|先接|發證室|帶除蟲/gi,  // 移除這些非人名詞彙
                 /送車|用車|待命|備勤|公差|公出|公假|調度/g,
                 /[A-Z][A-Z]\d{4}/g,  // 移除如"AA1234"格式的內容
                 /\d{1,2}:\d{2}/g,    // 移除時間格式
@@ -811,6 +908,7 @@
             
             // 如果處理後為空，直接返回
             if (!cleanedStr.trim()) {
+                addDebugLog(`處理後字串為空，跳過`);
                 return [];
             }
             
@@ -820,28 +918,33 @@
             // 移除特殊符號但保留可能的分隔符
             cleanedStr = cleanedStr.replace(/[()\[\]{}【】]/g, '');
             
-            // 先移除所有職務關鍵字（包括"關電"）
+            // 先移除所有職務關鍵字
             positionKeywords.forEach(keyword => {
                 const regex = new RegExp(keyword, 'gi');
                 cleanedStr = cleanedStr.replace(regex, '');
             });
             
-            // 新增動作詞彙過濾（包括"關電"）
-            const actionKeywords = ['關電', '送車', '用車', '送', '油', '簽', '機', '班', '組', '長', 'Q', 'C', '庫', '房', '不加', '拖機', '外派', '隨機', '車', '電', '領', '員', '人員'];
+            // 新增動作詞彙過濾
+            const actionKeywords = ['關電', '先接', '發證室', '帶除蟲', '送車', '用車', '送', '油', '簽', '機', '班', '組', '長', 'Q', 'C', '庫', '房', '不加', '拖機', '外派', '隨機', '車', '電', '領', '員', '人員'];
             actionKeywords.forEach(keyword => {
                 const regex = new RegExp(keyword, 'gi');
                 cleanedStr = cleanedStr.replace(regex, '');
             });
             
-            // 再次檢查是否包含"關電"，如果有則移除
-            if (cleanedStr.includes('關電')) {
-                cleanedStr = cleanedStr.replace(/關電/g, '');
-            }
+            // 再次檢查是否包含非人名詞彙，如果有則移除
+            nonPersonWords.forEach(word => {
+                if (cleanedStr.includes(word)) {
+                    cleanedStr = cleanedStr.replace(new RegExp(word, 'gi'), '');
+                }
+            });
             
             // 如果處理後為空，直接返回
             if (!cleanedStr.trim()) {
+                addDebugLog(`過濾後字串為空，跳過`);
                 return [];
             }
+            
+            addDebugLog(`過濾後人員字串: "${cleanedStr}"`);
             
             // 首先嘗試使用正則表達式提取中文人名（2-3個中文字）
             const chineseNameRegex = /[\u4e00-\u9fa5]{2,3}/g;
@@ -850,7 +953,10 @@
             // 如果正則表達式找到了名字，清理後返回
             if (foundNames.length > 0) {
                 const cleanedNames = foundNames.map(name => cleanName(name))
-                                              .filter(name => name && isValidPerson(name) && name !== '關電');
+                                              .filter(name => name && isValidPerson(name) && 
+                                                      name !== '關電' && name !== '先接' && 
+                                                      name !== '發證室' && name !== '帶除蟲');
+                addDebugLog(`正則找到名稱: ${foundNames.join(', ')} -> 清理後: ${cleanedNames.join(', ')}`);
                 return cleanedNames;
             }
             
@@ -875,8 +981,11 @@
             
             // 清理每個名字
             const cleanedNames = names.map(name => cleanName(name))
-                                     .filter(name => name && isValidPerson(name) && name !== '關電');
+                                     .filter(name => name && isValidPerson(name) && 
+                                             name !== '關電' && name !== '先接' && 
+                                             name !== '發證室' && name !== '帶除蟲');
             
+            addDebugLog(`分隔後名稱: ${names.join(', ')} -> 清理後: ${cleanedNames.join(', ')}`);
             return cleanedNames;
         }
         
@@ -918,12 +1027,12 @@
             // 檢查是否為職務
             if (isPosition(name)) return false;
             
-            // 檢查是否為常見的非人名詞彙（包括"關電"）
-            const nonPersonKeywords = ['關電', '送車', '用車', '待命', '備勤', '公差', '公出', '公假', '調度', 'NIL', '不加', '加班', '值班', '請假', '休假', '病假', '事假'];
+            // 檢查是否為常見的非人名詞彙
+            const nonPersonKeywords = ['關電', '先接', '發證室', '帶除蟲', '送車', '用車', '待命', '備勤', '公差', '公出', '公假', '調度', 'NIL', '不加', '加班', '值班', '請假', '休假', '病假', '事假'];
             if (nonPersonKeywords.includes(name)) return false;
             
             // 檢查是否包含非人名字元
-            const nonNameChars = ['電', '車', '油', '送', '簽', '機', '班', '組', '長', 'Q', 'C', '庫', '房'];
+            const nonNameChars = ['電', '車', '油', '送', '簽', '機', '班', '組', '長', 'Q', 'C', '庫', '房', '室', '蟲'];
             if (nonNameChars.some(char => name.includes(char))) {
                 // 如果包含非人名字元，只接受常見姓氏開頭的名字
                 const firstChar = name.charAt(0);
@@ -959,8 +1068,9 @@
             // 如果有括號內容，移除括號內容
             name = name.replace(/[\(\[（].*?[\)\]）]/g, '');
             
-            // 如果名字中包含"關電"，直接返回空字符串
-            if (name.includes('關電')) {
+            // 如果名字中包含非人名詞彙，直接返回空字符串
+            const nonPersonWords = ['關電', '先接', '發證室', '帶除蟲'];
+            if (nonPersonWords.some(word => name.includes(word))) {
                 return '';
             }
             
@@ -971,7 +1081,7 @@
                 const normalizedName = chineseChars.slice(0, 3).join('');
                 
                 // 再次檢查是否為非人名詞彙
-                const nonPersonKeywords = ['關電', '送車', '用車', '待命', '備勤'];
+                const nonPersonKeywords = ['關電', '先接', '發證室', '帶除蟲', '送車', '用車', '待命', '備勤'];
                 if (nonPersonKeywords.includes(normalizedName)) {
                     return '';
                 }
@@ -1103,6 +1213,15 @@
             `;
             
             summaryDiv.appendChild(namesSection);
+            
+            // 顯示檔案信息
+            const fileInfoSection = document.createElement('div');
+            fileInfoSection.className = 'file-info';
+            fileInfoSection.innerHTML = `
+                <div>處理的工作表數量: ${processedSheets.length}</div>
+                <div>處理的工作表: ${processedSheets.slice(0, 10).join(', ')}${processedSheets.length > 10 ? '...' : ''}</div>
+            `;
+            summaryDiv.appendChild(fileInfoSection);
         }
         
         // 更新人員選擇下拉選單
@@ -1112,24 +1231,50 @@
             // 清除現有選項（保留第一個）
             personSelect.innerHTML = '<option value="">請選擇人員</option>';
             
-            // 對人員按姓名排序
+            // 對人員按姓名排序，並過濾掉非人名詞彙
             const sortedPersonnel = Array.from(personList)
-                .filter(person => person && person.trim() && person !== '關電')
+                .filter(person => {
+                    if (!person || !person.trim()) return false;
+                    // 明確過濾非人名詞彙
+                    const nonPersonWords = ['關電', '先接', '發證室', '帶除蟲'];
+                    return !nonPersonWords.includes(person);
+                })
                 .sort();
             
             sortedPersonnel.forEach(person => {
-                if (person && person !== '關電') {
+                if (person) {
                     const option = document.createElement('option');
                     option.value = person;
                     option.textContent = person;
                     personSelect.appendChild(option);
                 }
             });
+            
+            addDebugLog(`下拉選單人員數量: ${sortedPersonnel.length}`);
         }
         
         // 更新當月總航班數
         function updateMonthTotal() {
-            document.getElementById('monthTotal').innerHTML = `當月總航班數: ${totalFlights} 個航班`;
+            if (allData.length === 0) {
+                document.getElementById('monthTotal').innerHTML = '當月總航班數: 0 個航班';
+                return;
+            }
+            
+            // 從資料中提取月份信息
+            const months = new Set();
+            allData.forEach(item => {
+                const dateParts = item.日期.split('/');
+                if (dateParts.length === 2) {
+                    months.add(dateParts[0]);
+                }
+            });
+            
+            const monthList = Array.from(months).sort();
+            const monthText = monthList.length === 1 ? 
+                `${monthList[0]}月` : 
+                `${monthList.join('月、')}月`;
+            
+            document.getElementById('monthTotal').innerHTML = `${monthText}總航班數: ${totalFlights} 個航班`;
         }
         
         // 選擇人員
@@ -1183,6 +1328,7 @@
                 ...Object.keys(personData.authFlights),
                 ...Object.keys(personData.nonAuthFlights)
             ])).sort((a, b) => {
+                // 日期排序：先按月份，再按日期
                 const [aMonth, aDay] = a.split('/').map(Number);
                 const [bMonth, bDay] = b.split('/').map(Number);
                 return (aMonth * 100 + aDay) - (bMonth * 100 + bDay);
@@ -1449,6 +1595,30 @@
             statusDiv.className = `status ${type}`;
             statusDiv.textContent = message;
             statusDiv.style.display = 'block';
+        }
+        
+        // 添加除錯日誌
+        function addDebugLog(message) {
+            debugLog.push(`${new Date().toLocaleTimeString()}: ${message}`);
+            // 保持日誌在合理大小
+            if (debugLog.length > 100) {
+                debugLog = debugLog.slice(-50);
+            }
+        }
+        
+        // 顯示除錯日誌
+        function displayDebugLog() {
+            const summaryDiv = document.getElementById('summary');
+            if (!summaryDiv || debugLog.length === 0) return;
+            
+            const debugSection = document.createElement('div');
+            debugSection.className = 'debug-info';
+            debugSection.innerHTML = `
+                <div class="debug-title">除錯日誌 (最近${debugLog.length}條)</div>
+                ${debugLog.map(log => `<div class="debug-item">${log}</div>`).join('')}
+            `;
+            
+            summaryDiv.appendChild(debugSection);
         }
         
         // 初始化頁面
