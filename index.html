@@ -7,6 +7,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* 所有CSS樣式保持不變 */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -452,10 +453,6 @@
             color: #2c3e50;
         }
         
-        .file-info div {
-            margin-bottom: 5px;
-        }
-        
         .debug-info {
             background-color: #f9f9f9;
             padding: 15px;
@@ -478,6 +475,18 @@
             padding: 5px;
             border-bottom: 1px dashed #ddd;
         }
+        
+        .found-names-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .found-names-section h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -494,6 +503,7 @@
                 <li>系統將自動分析航班資料，區分授權人員（簽放人員）和非授權人員（接機/協助人員）</li>
                 <li>使用下拉式選單選擇人員，查看該人員當月的航班統計圖表</li>
                 <li>系統會自動拆分多人欄位，正確識別每個人名</li>
+                <li>系統會自動過濾非人名詞彙（如：簽、班、加、上、拖、車輛等工作備註）</li>
                 <li>最後可下載包含所有人員航班資料的單一CSV檔案</li>
             </ul>
         </div>
@@ -584,13 +594,72 @@
         let selectedPerson = '';
         let personFlightsData = {};
         let processedSheets = [];
-        let debugLog = []; // 除錯日誌
+        let debugLog = [];
         
-        // 中文人名常用字（用於識別是否為人名）
-        const commonChineseNames = ['蔡', '陳', '張', '李', '王', '黃', '吳', '劉', '林', '楊', '周', '葉', '江', '余', '郭', '洪', '胡', '蘇', '鍾', '方', '康', '鄭', '施', '浦', '侯', '范', '馮', '嚴', '喬', '游', '龔', '伍', '葉'];
+        // 完整的中文姓氏列表
+        const chineseSurnames = [
+            '趙', '錢', '孫', '李', '周', '吳', '鄭', '王', '馮', '陳', '褚', '衛', '蔣', '沈', '韓', '楊',
+            '朱', '秦', '尤', '許', '何', '呂', '施', '張', '孔', '曹', '嚴', '華', '金', '魏', '陶', '姜',
+            '戚', '謝', '鄒', '喻', '柏', '水', '竇', '章', '雲', '蘇', '潘', '葛', '奚', '范', '彭', '郎',
+            '魯', '韋', '昌', '馬', '苗', '鳳', '花', '方', '俞', '任', '袁', '柳', '酆', '鮑', '史', '唐',
+            '費', '廉', '岑', '薛', '雷', '賀', '倪', '湯', '滕', '殷', '羅', '畢', '郝', '鄔', '安', '常',
+            '樂', '於', '時', '傅', '皮', '卞', '齊', '康', '伍', '余', '元', '卜', '顧', '孟', '平', '黃',
+            '和', '穆', '蕭', '尹', '姚', '邵', '湛', '汪', '祁', '毛', '禹', '狄', '米', '貝', '明', '臧',
+            '計', '伏', '成', '戴', '談', '宋', '茅', '龐', '熊', '紀', '舒', '屈', '項', '祝', '董', '梁',
+            '杜', '阮', '藍', '閔', '席', '季', '麻', '強', '賈', '路', '婁', '危', '江', '童', '顏', '郭',
+            '梅', '盛', '林', '刁', '鍾', '徐', '邱', '駱', '高', '夏', '蔡', '田', '樊', '胡', '凌', '霍',
+            '虞', '萬', '支', '柯', '昝', '管', '盧', '莫', '經', '房', '裘', '繆', '干', '解', '應', '宗',
+            '丁', '宣', '賁', '鄧', '郁', '單', '杭', '洪', '包', '諸', '左', '石', '崔', '吉', '鈕', '龔',
+            '程', '嵇', '邢', '滑', '裴', '陸', '榮', '翁', '荀', '羊', '於', '惠', '甄', '麴', '家', '封',
+            '芮', '羿', '儲', '靳', '汲', '邴', '糜', '松', '井', '段', '富', '巫', '烏', '焦', '巴', '弓',
+            '牧', '隗', '山', '谷', '車', '侯', '宓', '蓬', '全', '郗', '班', '仰', '秋', '仲', '伊', '宮',
+            '甯', '仇', '欒', '暴', '甘', '鈄', '厲', '戎', '祖', '武', '符', '劉', '景', '詹', '束', '龍',
+            '葉', '幸', '司', '韶', '郜', '黎', '薊', '薄', '印', '宿', '白', '懷', '蒲', '邰', '從', '鄂',
+            '索', '咸', '籍', '賴', '卓', '藺', '屠', '蒙', '池', '喬', '陰', '鬱', '胥', '能', '蒼', '雙',
+            '聞', '莘', '黨', '翟', '譚', '貢', '勞', '逄', '姬', '申', '扶', '堵', '冉', '宰', '酈', '雍',
+            '郤', '璩', '桑', '桂', '濮', '牛', '壽', '通', '邊', '扈', '燕', '冀', '郟', '浦', '尚', '農',
+            '溫', '別', '莊', '晏', '柴', '瞿', '閻', '充', '慕', '連', '茹', '習', '宦', '艾', '魚', '容',
+            '向', '古', '易', '慎', '戈', '廖', '庾', '終', '暨', '居', '衡', '步', '都', '耿', '滿', '弘',
+            '匡', '國', '文', '寇', '廣', '祿', '闕', '東', '歐', '殳', '沃', '利', '蔚', '越', '夔', '隆',
+            '師', '鞏', '厙', '聶', '晁', '勾', '敖', '融', '冷', '訾', '辛', '闞', '那', '簡', '饒', '空',
+            '曾', '毋', '沙', '乜', '養', '鞠', '須', '豐', '巢', '關', '蒯', '相', '查', '後', '荊', '紅',
+            '游', '竺', '權', '逯', '蓋', '益', '桓', '公', '萬俟', '司馬', '上官', '歐陽', '夏侯', '諸葛',
+            '聞人', '東方', '赫連', '皇甫', '尉遲', '公羊', '澹台', '公冶', '宗政', '濮陽', '淳于', '單于',
+            '太叔', '申屠', '公孫', '仲孫', '軒轅', '令狐', '鍾離', '宇文', '長孫', '慕容', '鮮于', '閭丘',
+            '司徒', '司空', '亓官', '司寇', '仉', '督', '子車', '顓孫', '端木', '巫馬', '公西', '漆雕', '樂正',
+            '壤駟', '公良', '拓跋', '夾谷', '宰父', '穀梁', '晉', '楚', '閆', '法', '汝', '鄢', '塗', '欽',
+            '段干', '百里', '東郭', '南門', '呼延', '歸', '海', '羊舌', '微生', '岳', '帥', '緱', '亢', '況',
+            '後', '有', '琴', '梁丘', '左丘', '東門', '西門', '商', '牟', '佘', '佴', '伯', '賞', '南宮',
+            '墨', '哈', '譙', '笪', '年', '愛', '陽', '佟', '第五', '言', '福'
+        ];
         
-        // 職務關鍵字過濾列表 - 增加"先接"和"發證室"
-        const positionKeywords = ['代領班', '領班', '組長', '值勤組長', '代組長', '組長/', 'QC', '庫房', '外派', '隨機', 'NIL', '早到先接', '送', '油', '不加', '拖機', '簽', '接機', '簽放人員', '協助人員', '接機人員', '關電', '送車', '用車', '待命', '備勤', '先接', '發證室', '帶除蟲', '機務組'];
+        // 非人名詞彙列表（擴展版本，包含車輛相關詞彙）
+        const nonPersonWords = [
+            '關電', '先接', '早到先', '早到先接', '發證室', '帶除蟲', '送車', '用車', '待命', '備勤',
+            '悉放', '早到', '一人服', '輸入', '台飛', '注意', '早全', '值勤', '聽耳', '推耳', '開加', '開放',
+            '送', '油', '不加', '拖機', '簽', '接機', '簽放人員', '協助人員', '接機人員', '代領班', '領班',
+            '組長', '值勤組長', '代組長', 'QC', '庫房', '外派', '隨機', '公差', '公出', '公假', '調度',
+            '加班', '值班', '請假', '休假', '病假', '事假', 'NIL', 'nil', 'Nil',
+            '早班', '晚班', '大夜班', '小夜班', '值班室', '待命室', '機坪', '機庫',
+            '早', '到', '先', '全', '電', '車', '油', '機', '班', '組', '長', '房', '室',
+            '早先', '先到', '早全接', '早全到', '早全先',
+            // 新增的工作備註詞彙組合
+            '加油', '上車', '拖機', '修機', '補油', '調機', '換班', '整備', '檢修', '測試', '驗收', '檢查',
+            '放行', '開機', '關機', '推機', '拉機', '移機', '搬運', '裝機', '卸機', '拆機', '組裝',
+            '領班', '代班', '替班', '幫忙', '協助', '輔助', '教導', '學習', '練習',
+            '待命', '等候', '等待', '備勤', '值勤', '輪班', '排班', '調度', '休假',
+            '急件', '快速', '慢速', '延誤', '遲到', '早到', '晚到', '夜班', '日班', '午班', '晨班',
+            '大修', '小修', '長班', '短班', '高空', '低空', '多機', '少機', '重機', '輕機',
+            '新機', '舊機', '好機', '壞機', '優良', '良好', '差機', '劣機', '完成', '未完成',
+            '已到', '將到', '正在', '完畢', '結束', '開始',
+            // 新增車輛相關詞彙
+            '車輛', '车', '辆', '车子', '车辆调度', '用车', '送车', '接车', '用车送', '用車送',
+            '用車', '用車接', '車輛接', '車輛送', '車輛調度', '車調度', '車子', '车辆使用',
+            '車輛使用', '車輛安排', '車安排', '車輛調配', '車調配'
+        ];
+        
+        // 特殊過濾詞彙
+        const specialFilterWords = ['早到先', '早到', '先接', '早全', '早先', '先到', '早全接', '早全到', '早全先'];
         
         // 處理檔案選擇
         function handleFileSelect(event) {
@@ -600,26 +669,17 @@
             document.getElementById('fileName').textContent = `已選擇檔案: ${file.name}`;
             showStatus('檔案已選擇，正在分析中...', 'info');
             
-            // 重置狀態
             resetAnalysis();
-            
-            // 顯示載入動畫
             showLoading(true);
             
-            // 讀取檔案
             const reader = new FileReader();
             
             reader.onload = function(e) {
                 try {
-                    // 讀取Excel檔案
                     const data = new Uint8Array(e.target.result);
                     workbook = XLSX.read(data, {type: 'array'});
-                    
-                    // 分析檔案
                     analyzeWorkbook(workbook);
-                    
                     showLoading(false);
-                    
                 } catch (error) {
                     console.error('分析檔案時發生錯誤:', error);
                     showStatus('分析檔案時發生錯誤: ' + error.message, 'error');
@@ -648,13 +708,11 @@
             processedSheets = [];
             debugLog = [];
             
-            // 清除圖表
             if (flightChart) {
                 flightChart.destroy();
                 flightChart = null;
             }
             
-            // 隱藏所有區塊
             document.getElementById('personSelector').style.display = 'none';
             document.getElementById('summary').style.display = 'none';
             document.getElementById('chartContainer').style.display = 'none';
@@ -662,7 +720,6 @@
             document.getElementById('monthTotal').style.display = 'none';
             document.getElementById('actions').style.display = 'none';
             
-            // 清空顯示內容
             document.getElementById('personSelect').innerHTML = '<option value="">請選擇人員</option>';
             document.getElementById('personNameDisplay').textContent = '';
             document.getElementById('personTotalFlights').textContent = '';
@@ -672,7 +729,6 @@
         
         // 分析工作簿
         function analyzeWorkbook(workbook) {
-            // 重置資料
             allData = [];
             personList.clear();
             authPersonnel.clear();
@@ -682,12 +738,9 @@
             processedSheets = [];
             debugLog = [];
             
-            // 除錯日誌
             addDebugLog(`開始分析工作簿，共有 ${workbook.SheetNames.length} 個工作表`);
             
-            // 遍歷所有工作表
             workbook.SheetNames.forEach(sheetName => {
-                // 處理所有月份的工作表 (0101, 0102, ..., 1231)
                 if (sheetName.match(/^[0-9]{4}$/)) {
                     const worksheet = workbook.Sheets[sheetName];
                     addDebugLog(`處理工作表: ${sheetName}`);
@@ -698,10 +751,8 @@
                 }
             });
             
-            // 如果沒有處理任何工作表，嘗試其他格式
             if (processedSheets.length === 0) {
                 addDebugLog('未找到標準工作表名稱，嘗試處理所有工作表');
-                // 嘗試處理其他可能的工作表名稱格式
                 workbook.SheetNames.forEach(sheetName => {
                     const worksheet = workbook.Sheets[sheetName];
                     addDebugLog(`嘗試處理工作表: ${sheetName}`);
@@ -710,19 +761,19 @@
                 });
             }
             
-            // 更新UI
+            // 處理完所有工作表後，進行姓名合併
+            if (allData.length > 0) {
+                mergeSimilarNames();
+            }
+            
             updateUI();
-            
             showStatus(`分析完成！共處理 ${allData.length} 筆航班資料，來自 ${processedSheets.length} 個工作表`, 'success');
-            
-            // 顯示除錯日誌
             displayDebugLog();
         }
         
         // 處理單個工作表
         function processWorksheet(worksheet, sheetName) {
             try {
-                // 將工作表轉換為JSON
                 const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
                 
                 if (!jsonData || jsonData.length < 4) {
@@ -730,14 +781,11 @@
                     return;
                 }
                 
-                // 提取日期
                 const date = extractDate(sheetName, jsonData);
                 
-                // 從第4行開始是航班資料（跳過表頭）
                 for (let i = 3; i < jsonData.length; i++) {
                     const row = jsonData[i];
                     
-                    // 檢查是否為有效的航班資料行（有機號）
                     if (row && row[0] && typeof row[0] === 'string' && row[0].trim() && !row[0].includes('機號')) {
                         processFlightRow(row, date);
                         totalFlights++;
@@ -752,20 +800,17 @@
         
         // 提取日期
         function extractDate(sheetName, jsonData) {
-            // 嘗試從工作表名稱提取日期
             if (sheetName.match(/^[0-9]{4}$/)) {
                 const month = sheetName.substring(0, 2);
                 const day = sheetName.substring(2, 4);
                 return `${month}/${day}`;
             }
             
-            // 如果工作表名稱不是數字格式，嘗試從第一行提取
             try {
                 if (jsonData && jsonData.length > 0) {
                     const firstRow = jsonData[0];
                     if (firstRow && firstRow.length > 0) {
                         const dateStr = String(firstRow[0]);
-                        // 嘗試提取日期格式
                         const dateMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})/);
                         if (dateMatch) {
                             const month = dateMatch[1].padStart(2, '0');
@@ -778,371 +823,551 @@
                 addDebugLog(`無法從工作表 ${sheetName} 提取日期: ${e.message}`);
             }
             
-            // 如果都失敗，使用工作表名稱
             return sheetName;
         }
         
         // 處理航班資料行
         function processFlightRow(row, date) {
-            // 提取航班資料
+            const safeRow = [...row];
+            while (safeRow.length < 12) {
+                safeRow.push('');
+            }
+            
             const flightData = {
                 日期: date,
-                機號: row[0] || '',
-                B_G: row[1] || '',
-                機型: row[2] || '',
-                檢查: row[3] || '',
-                入境: row[4] || '',
-                出境: row[5] || '',
-                STA: row[6] || '',
-                STD: row[7] || '',
-                來自: row[8] || '',
-                飛往: row[9] || '',
-                簽放人員: row[10] || '',
-                接機人員: row[11] || '',
-                REMARK: row[12] || ''
+                機號: safeRow[0] || '',
+                B_G: safeRow[1] || '',
+                機型: safeRow[2] || '',
+                檢查: safeRow[3] || '',
+                入境: safeRow[4] || '',
+                出境: safeRow[5] || '',
+                STA: safeRow[6] || '',
+                STD: safeRow[7] || '',
+                來自: safeRow[8] || '',
+                飛往: safeRow[9] || '',
+                簽放人員: safeRow[10] || '',
+                接機人員: safeRow[11] || ''
             };
             
-            // 處理授權人員（簽放人員）- 拆分多人情況
+            // 處理授權人員
             const authPersonnelStr = flightData.簽放人員 || '';
             if (authPersonnelStr) {
                 const personnelList = extractPersonnel(authPersonnelStr);
                 
                 personnelList.forEach(person => {
                     if (person) {
-                        // 規範化人名
-                        const normalizedPerson = normalizePersonName(person);
+                        personList.add(person);
+                        authPersonnel.add(person);
                         
-                        // 再次檢查是否為有效人名
-                        if (!normalizedPerson || !isValidPerson(normalizedPerson) || 
-                            normalizedPerson === '關電' || normalizedPerson === '先接' || 
-                            normalizedPerson === '發證室' || normalizedPerson === '帶除蟲') {
-                            addDebugLog(`過濾非人名詞彙: ${person} -> ${normalizedPerson} (授權)`);
-                            return;
-                        }
-                        
-                        // 添加到人員列表
-                        personList.add(normalizedPerson);
-                        authPersonnel.add(normalizedPerson);
-                        
-                        // 添加到所有資料
                         const record = {
                             ...flightData,
-                            人員: normalizedPerson,
+                            人員: person,
                             人員類型: '授權人員',
-                            原始名稱: person // 保留原始名稱用於顯示
+                            原始名稱: person
                         };
                         allData.push(record);
                         
-                        // 更新人員航班數據
-                        updatePersonFlightsData(person, normalizedPerson, date, record, 'auth');
+                        updatePersonFlightsData(person, date, record, 'auth');
                     }
                 });
             }
             
-            // 處理非授權人員（接機人員）- 拆分多人情況
+            // 處理非授權人員
             const nonAuthPersonnelStr = flightData.接機人員 || '';
             if (nonAuthPersonnelStr) {
                 const personnelList = extractPersonnel(nonAuthPersonnelStr);
                 
                 personnelList.forEach(person => {
                     if (person) {
-                        // 規範化人名
-                        const normalizedPerson = normalizePersonName(person);
+                        personList.add(person);
+                        nonAuthPersonnel.add(person);
                         
-                        // 再次檢查是否為有效人名
-                        if (!normalizedPerson || !isValidPerson(normalizedPerson) || 
-                            normalizedPerson === '關電' || normalizedPerson === '先接' || 
-                            normalizedPerson === '發證室' || normalizedPerson === '帶除蟲') {
-                            addDebugLog(`過濾非人名詞彙: ${person} -> ${normalizedPerson} (非授權)`);
-                            return;
-                        }
-                        
-                        // 添加到人員列表
-                        personList.add(normalizedPerson);
-                        nonAuthPersonnel.add(normalizedPerson);
-                        
-                        // 添加到所有資料
                         const record = {
                             ...flightData,
-                            人員: normalizedPerson,
+                            人員: person,
                             人員類型: '非授權人員',
-                            原始名稱: person // 保留原始名稱用於顯示
+                            原始名稱: person
                         };
                         allData.push(record);
                         
-                        // 更新人員航班數據
-                        updatePersonFlightsData(person, normalizedPerson, date, record, 'nonAuth');
+                        updatePersonFlightsData(person, date, record, 'nonAuth');
                     }
                 });
             }
         }
         
-        // 從字串中提取人員名單（支持多人）
+        // 從字串中提取人員名單 - 改進的智能分割策略
         function extractPersonnel(personnelStr) {
             if (!personnelStr || typeof personnelStr !== 'string') {
                 return [];
             }
             
-            let cleanedStr = personnelStr.toString();
+            let cleanedStr = personnelStr.toString().trim();
             addDebugLog(`原始人員字串: "${personnelStr}"`);
             
-            // 優先處理特殊情況：如果整個字符串就是非人名詞彙，直接返回空陣列
-            const nonPersonWords = ['關電', '先接', '發證室', '帶除蟲', '送車', '用車', '待命', '備勤'];
-            if (nonPersonWords.some(word => cleanedStr.trim() === word)) {
-                addDebugLog(`整個字串為非人名詞彙: "${cleanedStr}"，跳過`);
+            if (!cleanedStr) {
                 return [];
             }
             
-            // 移除常見的固定模式
-            const commonPatterns = [
-                /關電|先接|發證室|帶除蟲/gi,  // 移除這些非人名詞彙
-                /送車|用車|待命|備勤|公差|公出|公假|調度/g,
-                /[A-Z][A-Z]\d{4}/g,  // 移除如"AA1234"格式的內容
-                /\d{1,2}:\d{2}/g,    // 移除時間格式
-                /加班|值班|請假|休假|病假|事假/g,
+            // 1. 檢查是否為特殊過濾詞彙
+            for (const word of specialFilterWords) {
+                if (cleanedStr === word) {
+                    addDebugLog(`跳過特殊過濾詞彙: "${cleanedStr}"`);
+                    return [];
+                }
+            }
+            
+            // 2. 檢查是否為非人名詞彙
+            for (const word of nonPersonWords) {
+                if (cleanedStr === word) {
+                    addDebugLog(`跳過非人名詞彙: "${cleanedStr}"`);
+                    return [];
+                }
+            }
+            
+            // 3. 移除所有數字和英文字母
+            cleanedStr = cleanedStr.replace(/[0-9A-Za-z]/g, '');
+            
+            // 4. 移除特殊符號（保留斜線等分隔符）
+            cleanedStr = cleanedStr.replace(/[()\[\]{}【】《》「」]/g, '');
+            
+            // 5. 移除時間格式
+            cleanedStr = cleanedStr.replace(/\d{1,2}:\d{2}/g, '');
+            
+            // 6. 智能分割策略：識別完整姓名
+            const names = smartSplitNames(cleanedStr);
+            
+            addDebugLog(`智能分割後名稱: ${names.join(', ')}`);
+            
+            // 7. 清理每個名字的尾隨詞彙（特別注意：不要移除"正"字，但移除"不"、"帶"、"耳"和"車輛"相關字）
+            const cleanedNames = names.map(name => cleanNameTrailingWords(name));
+            
+            // 8. 過濾無效人名和空字符串
+            const finalNames = [];
+            
+            for (const name of cleanedNames) {
+                // 確保不是空字符串
+                if (!name || name.trim().length === 0) {
+                    addDebugLog(`跳過空名稱`);
+                    continue;
+                }
+                
+                if (isValidChineseName(name)) {
+                    finalNames.push(name);
+                } else {
+                    addDebugLog(`跳過無效人名: "${name}"`);
+                }
+            }
+            
+            addDebugLog(`處理後名稱: ${finalNames.join(', ')}`);
+            
+            // 9. 移除重複的名字
+            const uniqueNames = [...new Set(finalNames)];
+            
+            addDebugLog(`最終有效人名: ${uniqueNames.join(', ')}`);
+            return uniqueNames;
+        }
+        
+        // 清理姓名尾隨詞彙（改進版本，特別處理"車輛"等非人名詞彙）
+        function cleanNameTrailingWords(name) {
+            if (!name || name.length < 2) return name;
+            
+            // 首先檢查整個名稱是否為非人名詞彙
+            for (const word of nonPersonWords) {
+                if (name === word) {
+                    return ''; // 返回空字串，表示不是人名
+                }
+            }
+            
+            // 檢查是否包含特定詞彙，如"車輛"
+            if (name.includes('車輛') || name.includes('车') || name.includes('辆')) {
+                return ''; // 返回空字串，表示不是人名
+            }
+            
+            // 需要移除的尾隨詞彙（包括工作備註詞彙）
+            // 注意："正"字在人名中應該保留（如"游源正"）
+            // "不"字、"帶"字和"耳"字需要過濾
+            const trailingWords = [
+                '簽', '班', '先接', '早到', '先', '接', '早', '到', '車', '油', '機', '電', '送',
+                '加', '上', '拖', '修', '補', '調', '換', '整', '檢', '測', '試', '驗', '查',
+                '放', '開', '關', '推', '拉', '移', '搬', '運', '裝', '卸', '拆', '組',
+                '領', '代', '替', '幫', '協', '助', '輔', '導', '教', '學', '練',
+                '待', '候', '等', '備', '勤', '值', '輪', '排', '調', '休', '假',
+                '急', '快', '慢', '延', '遲', '早', '晚', '夜', '日', '午', '晨',
+                '大', '小', '長', '短', '高', '低', '多', '少', '重', '輕',
+                '新', '舊', '好', '壞', '優', '良', '差', '劣', '完', '未',
+                '已', '將', '在', '完', '畢', '結', '束', '開', '始',
+                '不', '帶', '耳',  // 新增：過濾"不"字、"帶"字和"耳"字
+                '輛', '辆'  // 新增：過濾"輛"字
             ];
             
-            commonPatterns.forEach(pattern => {
-                cleanedStr = cleanedStr.replace(pattern, '');
-            });
+            let cleaned = name;
+            let continueCleaning = true;
             
-            // 如果處理後為空，直接返回
-            if (!cleanedStr.trim()) {
-                addDebugLog(`處理後字串為空，跳過`);
-                return [];
-            }
-            
-            // 移除數字
-            cleanedStr = cleanedStr.replace(/[0-9]/g, '');
-            
-            // 移除特殊符號但保留可能的分隔符
-            cleanedStr = cleanedStr.replace(/[()\[\]{}【】]/g, '');
-            
-            // 先移除所有職務關鍵字
-            positionKeywords.forEach(keyword => {
-                const regex = new RegExp(keyword, 'gi');
-                cleanedStr = cleanedStr.replace(regex, '');
-            });
-            
-            // 新增動作詞彙過濾
-            const actionKeywords = ['關電', '先接', '發證室', '帶除蟲', '送車', '用車', '送', '油', '簽', '機', '班', '組', '長', 'Q', 'C', '庫', '房', '不加', '拖機', '外派', '隨機', '車', '電', '領', '員', '人員'];
-            actionKeywords.forEach(keyword => {
-                const regex = new RegExp(keyword, 'gi');
-                cleanedStr = cleanedStr.replace(regex, '');
-            });
-            
-            // 再次檢查是否包含非人名詞彙，如果有則移除
-            nonPersonWords.forEach(word => {
-                if (cleanedStr.includes(word)) {
-                    cleanedStr = cleanedStr.replace(new RegExp(word, 'gi'), '');
-                }
-            });
-            
-            // 如果處理後為空，直接返回
-            if (!cleanedStr.trim()) {
-                addDebugLog(`過濾後字串為空，跳過`);
-                return [];
-            }
-            
-            addDebugLog(`過濾後人員字串: "${cleanedStr}"`);
-            
-            // 首先嘗試使用正則表達式提取中文人名（2-3個中文字）
-            const chineseNameRegex = /[\u4e00-\u9fa5]{2,3}/g;
-            const foundNames = cleanedStr.match(chineseNameRegex) || [];
-            
-            // 如果正則表達式找到了名字，清理後返回
-            if (foundNames.length > 0) {
-                const cleanedNames = foundNames.map(name => cleanName(name))
-                                              .filter(name => name && isValidPerson(name) && 
-                                                      name !== '關電' && name !== '先接' && 
-                                                      name !== '發證室' && name !== '帶除蟲');
-                addDebugLog(`正則找到名稱: ${foundNames.join(', ')} -> 清理後: ${cleanedNames.join(', ')}`);
-                return cleanedNames;
-            }
-            
-            // 如果沒有找到，使用多種分隔符分割
-            const separators = ['/', '、', ' ', '，', ',', '及', '與', '//', '／', '、', '　'];
-            let names = [cleanedStr];
-            
-            separators.forEach(sep => {
-                const newNames = [];
-                names.forEach(name => {
-                    if (name.includes(sep)) {
-                        const splitNames = name.split(sep)
-                            .map(n => n.trim())
-                            .filter(n => n);
-                        newNames.push(...splitNames);
-                    } else {
-                        newNames.push(name);
+            while (continueCleaning && cleaned.length >= 2) {
+                continueCleaning = false;
+                for (const word of trailingWords) {
+                    if (cleaned.endsWith(word)) {
+                        cleaned = cleaned.slice(0, -word.length);
+                        addDebugLog(`移除尾隨詞彙 "${word}"，得到: "${cleaned}"`);
+                        continueCleaning = true;
+                        break;
                     }
-                });
-                names = newNames;
-            });
-            
-            // 清理每個名字
-            const cleanedNames = names.map(name => cleanName(name))
-                                     .filter(name => name && isValidPerson(name) && 
-                                             name !== '關電' && name !== '先接' && 
-                                             name !== '發證室' && name !== '帶除蟲');
-            
-            addDebugLog(`分隔後名稱: ${names.join(', ')} -> 清理後: ${cleanedNames.join(', ')}`);
-            return cleanedNames;
-        }
-        
-        // 清理姓名
-        function cleanName(name) {
-            if (!name) return '';
-            
-            // 去除前後空格
-            name = name.trim();
-            
-            // 去除名字內部的空格
-            name = name.replace(/\s+/g, '');
-            
-            // 去除常見的稱謂或後綴
-            const suffixes = ['先生', '小姐', '女士', '老師', '主任', '經理', '課長', '大哥', '大姊', '兄', '姐'];
-            suffixes.forEach(suffix => {
-                if (name.endsWith(suffix)) {
-                    name = name.substring(0, name.length - suffix.length);
                 }
-            });
-            
-            // 檢查是否為2-3個中文字
-            const chineseRegex = /^[\u4e00-\u9fa5]{2,3}$/;
-            if (chineseRegex.test(name)) {
-                return name;
             }
             
-            return '';
-        }
-        
-        // 檢查是否為有效人名
-        function isValidPerson(name) {
-            if (!name || name.length < 2 || name.length > 3) return false;
-            
-            // 檢查是否全部為中文字符
-            const chineseRegex = /^[\u4e00-\u9fa5]+$/;
-            if (!chineseRegex.test(name)) return false;
-            
-            // 檢查是否為職務
-            if (isPosition(name)) return false;
-            
-            // 檢查是否為常見的非人名詞彙
-            const nonPersonKeywords = ['關電', '先接', '發證室', '帶除蟲', '送車', '用車', '待命', '備勤', '公差', '公出', '公假', '調度', 'NIL', '不加', '加班', '值班', '請假', '休假', '病假', '事假'];
-            if (nonPersonKeywords.includes(name)) return false;
-            
-            // 檢查是否包含非人名字元
-            const nonNameChars = ['電', '車', '油', '送', '簽', '機', '班', '組', '長', 'Q', 'C', '庫', '房', '室', '蟲'];
-            if (nonNameChars.some(char => name.includes(char))) {
-                // 如果包含非人名字元，只接受常見姓氏開頭的名字
-                const firstChar = name.charAt(0);
-                const isCommonSurname = commonChineseNames.includes(firstChar);
-                if (!isCommonSurname) return false;
-            }
-            
-            // 檢查第一個字是否為常見姓氏
-            const firstChar = name.charAt(0);
-            const isCommonSurname = commonChineseNames.includes(firstChar);
-            
-            // 如果是常見姓氏，接受
-            // 如果不是常見姓氏，但長度為2或3，我們也接受（因為可能有少見姓氏）
-            return isCommonSurname || name.length >= 2;
-        }
-        
-        // 檢查是否為職務名稱
-        function isPosition(str) {
-            const lowerStr = str.toLowerCase();
-            return positionKeywords.some(keyword => 
-                lowerStr.includes(keyword.toLowerCase()) || 
-                str.includes(keyword)
-            );
-        }
-        
-        // 規範化人員名稱
-        function normalizePersonName(name) {
-            if (!name) return '';
-            
-            // 去除所有空格
-            name = name.replace(/\s+/g, '');
-            
-            // 如果有括號內容，移除括號內容
-            name = name.replace(/[\(\[（].*?[\)\]）]/g, '');
-            
-            // 如果名字中包含非人名詞彙，直接返回空字符串
-            const nonPersonWords = ['關電', '先接', '發證室', '帶除蟲'];
-            if (nonPersonWords.some(word => name.includes(word))) {
+            // 如果清理後變得太短（小於2個字），返回空字串
+            if (cleaned.length < 2) {
                 return '';
             }
             
-            // 提取中文字
-            const chineseChars = name.match(/[\u4e00-\u9fa5]/g) || [];
+            return cleaned;
+        }
+        
+        // 智能分割姓名的函數
+        function smartSplitNames(str) {
+            if (!str) return [];
             
-            if (chineseChars.length >= 2 && chineseChars.length <= 3) {
-                const normalizedName = chineseChars.slice(0, 3).join('');
-                
-                // 再次檢查是否為非人名詞彙
-                const nonPersonKeywords = ['關電', '先接', '發證室', '帶除蟲', '送車', '用車', '待命', '備勤'];
-                if (nonPersonKeywords.includes(normalizedName)) {
-                    return '';
+            // 先移除所有空白字符
+            str = str.replace(/\s+/g, '');
+            
+            // 常見的分隔符列表，按優先級排列
+            const separators = [
+                '//', '／', '/',  // 斜線分隔符
+                '、',             // 中文頓號
+                '，', ',',       // 逗號
+                '　',            // 全形空格
+                '+', '＋',       // 加號
+            ];
+            
+            let names = [];
+            let currentStr = str;
+            
+            // 優先處理明顯的分隔符
+            for (const sep of separators) {
+                if (currentStr.includes(sep)) {
+                    const parts = currentStr.split(sep)
+                        .map(part => part.trim())
+                        .filter(part => part && part.length > 0);
+                    
+                    if (parts.length > 1) {
+                        // 對每個部分遞歸處理
+                        parts.forEach(part => {
+                            names = names.concat(smartSplitNames(part));
+                        });
+                        return names;
+                    }
                 }
-                
-                return normalizedName;
             }
             
-            return name;
+            // 特別處理"和"字 - 謹慎處理
+            if (currentStr.includes('和')) {
+                // 檢查是否為可能的人名（如"余謙和"）
+                const length = currentStr.length;
+                
+                // 如果是2-4字的姓名，且包含"和"，很可能是一個完整姓名
+                if (length >= 2 && length <= 4) {
+                    // 檢查是否為有效中文人名
+                    const chineseRegex = /^[\u4e00-\u9fa5]+$/;
+                    if (chineseRegex.test(currentStr)) {
+                        // 檢查第一個字是否為姓氏
+                        const firstChar = currentStr.charAt(0);
+                        if (chineseSurnames.includes(firstChar)) {
+                            return [currentStr]; // 返回完整姓名
+                        }
+                        
+                        // 檢查前兩個字是否為複姓
+                        if (length >= 3) {
+                            const firstTwoChars = currentStr.substring(0, 2);
+                            if (chineseSurnames.includes(firstTwoChars)) {
+                                return [currentStr]; // 返回完整姓名
+                            }
+                        }
+                    }
+                }
+                
+                // 如果長度超過4個字，嘗試用"和"分割，但保留包含"和"的完整姓名
+                const parts = currentStr.split('和');
+                if (parts.length > 1) {
+                    // 對於每個部分，檢查是否是有效人名
+                    const validParts = [];
+                    parts.forEach((part, index) => {
+                        if (part && part.length > 0) {
+                            // 如果是第一個部分，且後面還有部分，檢查是否可能是不完整姓名
+                            if (index === 0 && parts.length > 1 && parts[1].length > 0) {
+                                // 檢查part + "和" + 下一個部分是否可能是完整姓名
+                                const possibleFullName = part + '和' + parts[1];
+                                if (isValidChineseName(possibleFullName)) {
+                                    // 跳過，讓後續處理
+                                    return;
+                                }
+                            }
+                            
+                            // 遞歸處理每個部分
+                            const subNames = smartSplitNames(part);
+                            validParts.push(...subNames);
+                        }
+                    });
+                    
+                    if (validParts.length > 0) {
+                        return validParts;
+                    }
+                }
+            }
+            
+            // 處理"及"字
+            if (currentStr.includes('及')) {
+                const parts = currentStr.split('及')
+                    .map(part => part.trim())
+                    .filter(part => part && part.length > 0);
+                
+                if (parts.length > 1) {
+                    parts.forEach(part => {
+                        names = names.concat(smartSplitNames(part));
+                    });
+                    return names;
+                }
+            }
+            
+            // 如果沒有找到任何分隔符，返回原始字符串
+            return currentStr ? [currentStr] : [];
+        }
+        
+        // 檢查是否為有效中文人名（改進版本，過濾"車輛"等詞彙）
+        function isValidChineseName(name) {
+            if (!name) return false;
+            
+            // 檢查長度：2-4個字（考慮複姓）
+            if (name.length < 2 || name.length > 4) {
+                return false;
+            }
+            
+            // 檢查是否全部為中文字符
+            const chineseRegex = /^[\u4e00-\u9fa5]+$/;
+            if (!chineseRegex.test(name)) {
+                return false;
+            }
+            
+            // 檢查是否為非人名詞彙
+            for (const word of nonPersonWords) {
+                if (name === word) {
+                    return false;
+                }
+            }
+            
+            // 特別檢查是否包含非人名詞彙（如"車輛"等）
+            const invalidPatterns = ['車', '辆', '機', '班', '簽', '油', '電', '送', '加', '上', '拖', '修'];
+            for (const pattern of invalidPatterns) {
+                if (name.includes(pattern) && name.length <= 3) {
+                    // 如果名稱包含這些字且長度很短，很可能不是人名
+                    // 但如果是最後一個字是"車"，且長度為2，可能是真實姓氏"車"
+                    if (pattern === '車' && name.length === 2 && chineseSurnames.includes(name.charAt(0))) {
+                        continue; // 可能是真實姓名，繼續檢查
+                    }
+                    return false;
+                }
+            }
+            
+            // 檢查是否為姓氏（考慮複姓）
+            // 先檢查前兩個字符是否為複姓
+            const firstTwoChars = name.substring(0, 2);
+            if (chineseSurnames.includes(firstTwoChars)) {
+                return true;
+            }
+            
+            // 檢查第一個字符是否為單姓
+            const firstChar = name.charAt(0);
+            if (chineseSurnames.includes(firstChar)) {
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // 合併相似姓名
+        function mergeSimilarNames() {
+            // 找出所有可能的姓名變體
+            const nameVariants = {};
+            
+            // 收集所有姓名
+            const allNames = Array.from(personList);
+            
+            // 找出相似的姓名（前綴匹配）
+            allNames.forEach(name1 => {
+                allNames.forEach(name2 => {
+                    if (name1 !== name2) {
+                        // 檢查一個是否是另一個的前綴
+                        if (name2.startsWith(name1) && name2.length > name1.length) {
+                            if (!nameVariants[name1]) {
+                                nameVariants[name1] = new Set();
+                            }
+                            nameVariants[name1].add(name2);
+                        } else if (name1.startsWith(name2) && name1.length > name2.length) {
+                            if (!nameVariants[name2]) {
+                                nameVariants[name2] = new Set();
+                            }
+                            nameVariants[name2].add(name1);
+                        }
+                    }
+                });
+            });
+            
+            // 合併資料：將較短姓名的資料合併到較長姓名中
+            Object.keys(nameVariants).forEach(shortName => {
+                const longNames = Array.from(nameVariants[shortName]);
+                
+                longNames.forEach(longName => {
+                    addDebugLog(`合併姓名變體: ${shortName} -> ${longName}`);
+                    
+                    // 合併 personFlightsData
+                    if (personFlightsData[shortName] && personFlightsData[longName]) {
+                        // 合併授權航班
+                        for (const date in personFlightsData[shortName].authFlights) {
+                            if (!personFlightsData[longName].authFlights[date]) {
+                                personFlightsData[longName].authFlights[date] = [];
+                            }
+                            personFlightsData[longName].authFlights[date].push(...personFlightsData[shortName].authFlights[date]);
+                            personFlightsData[longName].authCount += personFlightsData[shortName].authFlights[date].length;
+                        }
+                        
+                        // 合並非授權航班
+                        for (const date in personFlightsData[shortName].nonAuthFlights) {
+                            if (!personFlightsData[longName].nonAuthFlights[date]) {
+                                personFlightsData[longName].nonAuthFlights[date] = [];
+                            }
+                            personFlightsData[longName].nonAuthFlights[date].push(...personFlightsData[shortName].nonAuthFlights[date]);
+                            personFlightsData[longName].nonAuthCount += personFlightsData[shortName].nonAuthFlights[date].length;
+                        }
+                        
+                        // 更新總數
+                        personFlightsData[longName].totalFlights = 
+                            personFlightsData[longName].authCount + personFlightsData[longName].nonAuthCount;
+                        
+                        // 從資料結構中移除短姓名
+                        delete personFlightsData[shortName];
+                        personList.delete(shortName);
+                        
+                        // 更新授權/非授權人員列表
+                        if (authPersonnel.has(shortName)) {
+                            authPersonnel.delete(shortName);
+                            authPersonnel.add(longName);
+                        }
+                        if (nonAuthPersonnel.has(shortName)) {
+                            nonAuthPersonnel.delete(shortName);
+                            nonAuthPersonnel.add(longName);
+                        }
+                        
+                        // 更新所有資料中的姓名
+                        allData.forEach(record => {
+                            if (record.人員 === shortName) {
+                                record.人員 = longName;
+                            }
+                        });
+                        
+                        addDebugLog(`已將 ${shortName} 的資料合併到 ${longName}`);
+                    }
+                });
+            });
+            
+            // 特別處理"余謙"和"余謙和"的情況
+            if (personList.has('余謙') && personList.has('余謙和')) {
+                addDebugLog(`特別合併: 余謙 -> 余謙和`);
+                
+                // 合併 personFlightsData
+                if (personFlightsData['余謙'] && personFlightsData['余謙和']) {
+                    // 合併授權航班
+                    for (const date in personFlightsData['余謙'].authFlights) {
+                        if (!personFlightsData['余謙和'].authFlights[date]) {
+                            personFlightsData['余謙和'].authFlights[date] = [];
+                        }
+                        personFlightsData['余謙和'].authFlights[date].push(...personFlightsData['余謙'].authFlights[date]);
+                        personFlightsData['余謙和'].authCount += personFlightsData['余謙'].authFlights[date].length;
+                    }
+                    
+                    // 合並非授權航班
+                    for (const date in personFlightsData['余謙'].nonAuthFlights) {
+                        if (!personFlightsData['余謙和'].nonAuthFlights[date]) {
+                            personFlightsData['余謙和'].nonAuthFlights[date] = [];
+                        }
+                        personFlightsData['余謙和'].nonAuthFlights[date].push(...personFlightsData['余謙'].nonAuthFlights[date]);
+                        personFlightsData['余謙和'].nonAuthCount += personFlightsData['余謙'].nonAuthFlights[date].length;
+                    }
+                    
+                    // 更新總數
+                    personFlightsData['余謙和'].totalFlights = 
+                        personFlightsData['余謙和'].authCount + personFlightsData['余謙和'].nonAuthCount;
+                    
+                    // 從資料結構中移除"余謙"
+                    delete personFlightsData['余謙'];
+                    personList.delete('余謙');
+                    
+                    // 更新授權/非授權人員列表
+                    if (authPersonnel.has('余謙')) {
+                        authPersonnel.delete('余謙');
+                        authPersonnel.add('余謙和');
+                    }
+                    if (nonAuthPersonnel.has('余謙')) {
+                        nonAuthPersonnel.delete('余謙');
+                        nonAuthPersonnel.add('余謙和');
+                    }
+                    
+                    // 更新所有資料中的姓名
+                    allData.forEach(record => {
+                        if (record.人員 === '余謙') {
+                            record.人員 = '余謙和';
+                        }
+                    });
+                    
+                    addDebugLog(`已將 余謙 的資料合併到 余謙和`);
+                }
+            }
+            
+            // 顯示合併結果
+            if (Object.keys(nameVariants).length > 0) {
+                addDebugLog(`姓名合併完成，共處理 ${Object.keys(nameVariants).length} 個姓名變體`);
+            }
         }
         
         // 更新人員航班數據
-        function updatePersonFlightsData(originalName, normalizedName, date, flightRecord, type) {
-            if (!personFlightsData[normalizedName]) {
-                personFlightsData[normalizedName] = {
-                    originalNames: new Set([originalName]),
+        function updatePersonFlightsData(person, date, flightRecord, type) {
+            if (!personFlightsData[person]) {
+                personFlightsData[person] = {
                     authFlights: {},
                     nonAuthFlights: {},
                     totalFlights: 0,
                     authCount: 0,
                     nonAuthCount: 0
                 };
-            } else {
-                // 添加原始名稱變體
-                personFlightsData[normalizedName].originalNames.add(originalName);
             }
             
             if (type === 'auth') {
-                if (!personFlightsData[normalizedName].authFlights[date]) {
-                    personFlightsData[normalizedName].authFlights[date] = [];
+                if (!personFlightsData[person].authFlights[date]) {
+                    personFlightsData[person].authFlights[date] = [];
                 }
-                personFlightsData[normalizedName].authFlights[date].push(flightRecord);
-                personFlightsData[normalizedName].authCount++;
+                personFlightsData[person].authFlights[date].push(flightRecord);
+                personFlightsData[person].authCount++;
             } else {
-                if (!personFlightsData[normalizedName].nonAuthFlights[date]) {
-                    personFlightsData[normalizedName].nonAuthFlights[date] = [];
+                if (!personFlightsData[person].nonAuthFlights[date]) {
+                    personFlightsData[person].nonAuthFlights[date] = [];
                 }
-                personFlightsData[normalizedName].nonAuthFlights[date].push(flightRecord);
-                personFlightsData[normalizedName].nonAuthCount++;
+                personFlightsData[person].nonAuthFlights[date].push(flightRecord);
+                personFlightsData[person].nonAuthCount++;
             }
             
-            personFlightsData[normalizedName].totalFlights++;
+            personFlightsData[person].totalFlights++;
         }
         
         // 更新UI
         function updateUI() {
-            // 更新摘要
             updateSummary();
-            
-            // 更新人員選擇下拉選單
             updatePersonSelect();
-            
-            // 顯示當月總航班數
             updateMonthTotal();
             
-            // 顯示UI區塊
             document.getElementById('summary').style.display = 'grid';
             document.getElementById('personSelector').style.display = 'block';
             document.getElementById('monthTotal').style.display = 'block';
             document.getElementById('actions').style.display = 'flex';
             
-            // 如果只有一個人，自動選擇
             if (personList.size === 1) {
                 const firstPerson = Array.from(personList)[0];
                 selectPerson(firstPerson);
@@ -1153,7 +1378,6 @@
         function updateSummary() {
             const summaryDiv = document.getElementById('summary');
             
-            // 計算授權人員和非授權人員的重疊人數
             let overlapCount = 0;
             authPersonnel.forEach(person => {
                 if (nonAuthPersonnel.has(person)) {
@@ -1188,7 +1412,6 @@
             const authNames = Array.from(authPersonnel).sort();
             const nonAuthNames = Array.from(nonAuthPersonnel).sort();
             
-            // 在摘要下方顯示人員名單
             const namesSection = document.createElement('div');
             namesSection.className = 'person-info';
             namesSection.style.marginTop = '20px';
@@ -1214,40 +1437,50 @@
             
             summaryDiv.appendChild(namesSection);
             
-            // 顯示檔案信息
-            const fileInfoSection = document.createElement('div');
-            fileInfoSection.className = 'file-info';
-            fileInfoSection.innerHTML = `
-                <div>處理的工作表數量: ${processedSheets.length}</div>
-                <div>處理的工作表: ${processedSheets.slice(0, 10).join(', ')}${processedSheets.length > 10 ? '...' : ''}</div>
-            `;
-            summaryDiv.appendChild(fileInfoSection);
+            // 如果有姓名合併，顯示提示
+            if (Object.keys(personFlightsData).some(name => name.includes('和'))) {
+                const variantInfo = document.createElement('div');
+                variantInfo.className = 'variant-names';
+                variantInfo.innerHTML = `
+                    <p><span>注意：</span>系統已自動合併相似姓名變體（如"余謙"和"余謙和"已合併為"余謙和"）</p>
+                `;
+                summaryDiv.appendChild(variantInfo);
+            }
         }
         
         // 更新人員選擇下拉選單
         function updatePersonSelect() {
             const personSelect = document.getElementById('personSelect');
             
-            // 清除現有選項（保留第一個）
             personSelect.innerHTML = '<option value="">請選擇人員</option>';
             
-            // 對人員按姓名排序，並過濾掉非人名詞彙
+            // 對人員按姓名排序
             const sortedPersonnel = Array.from(personList)
                 .filter(person => {
                     if (!person || !person.trim()) return false;
-                    // 明確過濾非人名詞彙
-                    const nonPersonWords = ['關電', '先接', '發證室', '帶除蟲'];
-                    return !nonPersonWords.includes(person);
+                    
+                    // 確保是有效的人名
+                    if (person.length < 2 || person.length > 4) return false;
+                    
+                    // 檢查第一個字是否為姓氏
+                    const firstChar = person.charAt(0);
+                    if (!chineseSurnames.includes(firstChar)) {
+                        // 檢查前兩個字是否為複姓
+                        const firstTwoChars = person.substring(0, 2);
+                        if (!chineseSurnames.includes(firstTwoChars)) {
+                            return false;
+                        }
+                    }
+                    
+                    return true;
                 })
                 .sort();
             
             sortedPersonnel.forEach(person => {
-                if (person) {
-                    const option = document.createElement('option');
-                    option.value = person;
-                    option.textContent = person;
-                    personSelect.appendChild(option);
-                }
+                const option = document.createElement('option');
+                option.value = person;
+                option.textContent = person;
+                personSelect.appendChild(option);
             });
             
             addDebugLog(`下拉選單人員數量: ${sortedPersonnel.length}`);
@@ -1260,7 +1493,6 @@
                 return;
             }
             
-            // 從資料中提取月份信息
             const months = new Set();
             allData.forEach(item => {
                 const dateParts = item.日期.split('/');
@@ -1287,17 +1519,12 @@
             
             selectedPerson = personName;
             
-            // 更新顯示
             document.getElementById('personNameDisplay').textContent = personName;
             
-            // 顯示圖表和詳細資料
             document.getElementById('chartContainer').style.display = 'block';
             document.getElementById('personDetails').style.display = 'grid';
             
-            // 更新圖表
             updateChart(personName);
-            
-            // 更新詳細資料
             updatePersonDetails(personName);
         }
         
@@ -1305,14 +1532,11 @@
         function updateChart(personName) {
             const ctx = document.getElementById('flightChart').getContext('2d');
             
-            // 銷毀現有圖表
             if (flightChart) {
                 flightChart.destroy();
             }
             
-            // 獲取人員數據
             const personData = personFlightsData[personName] || {
-                originalNames: new Set(),
                 authFlights: {},
                 nonAuthFlights: {},
                 totalFlights: 0,
@@ -1320,31 +1544,25 @@
                 nonAuthCount: 0
             };
             
-            // 更新總航班數顯示
             document.getElementById('personTotalFlights').textContent = personData.totalFlights;
             
-            // 準備圖表數據
             const allDates = Array.from(new Set([
                 ...Object.keys(personData.authFlights),
                 ...Object.keys(personData.nonAuthFlights)
             ])).sort((a, b) => {
-                // 日期排序：先按月份，再按日期
                 const [aMonth, aDay] = a.split('/').map(Number);
                 const [bMonth, bDay] = b.split('/').map(Number);
                 return (aMonth * 100 + aDay) - (bMonth * 100 + bDay);
             });
             
-            // 準備授權航班數數據
             const authCounts = allDates.map(date => 
                 personData.authFlights[date] ? personData.authFlights[date].length : 0
             );
             
-            // 準備非授權航班數數據
             const nonAuthCounts = allDates.map(date => 
                 personData.nonAuthFlights[date] ? personData.nonAuthFlights[date].length : 0
             );
             
-            // 創建圖表
             flightChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -1411,7 +1629,6 @@
         // 更新人員詳細資料
         function updatePersonDetails(personName) {
             const personData = personFlightsData[personName] || {
-                originalNames: new Set(),
                 authFlights: {},
                 nonAuthFlights: {},
                 totalFlights: 0,
@@ -1422,10 +1639,6 @@
             const authDetails = document.getElementById('authDetails');
             const nonAuthDetails = document.getElementById('nonAuthDetails');
             
-            // 顯示原始名稱變體（如果有）
-            const originalNames = Array.from(personData.originalNames || new Set([personName]));
-            
-            // 授權航班資料
             if (personData.authCount > 0) {
                 let authHTML = `
                     <div class="person-info">
@@ -1439,15 +1652,6 @@
                         </div>
                     </div>
                 `;
-                
-                // 顯示原始名稱變體
-                if (originalNames.length > 1) {
-                    authHTML += `
-                        <div class="variant-names">
-                            原始名稱變體: <span>${originalNames.join(', ')}</span>
-                        </div>
-                    `;
-                }
                 
                 const authDates = Object.keys(personData.authFlights).sort((a, b) => {
                     const [aMonth, aDay] = a.split('/').map(Number);
@@ -1478,7 +1682,6 @@
                 authDetails.innerHTML = '<div class="no-data">無授權航班資料</div>';
             }
             
-            // 非授權航班資料
             if (personData.nonAuthCount > 0) {
                 let nonAuthHTML = `
                     <div class="person-info">
@@ -1492,15 +1695,6 @@
                         </div>
                     </div>
                 `;
-                
-                // 顯示原始名稱變體
-                if (originalNames.length > 1) {
-                    nonAuthHTML += `
-                        <div class="variant-names">
-                            原始名稱變體: <span>${originalNames.join(', ')}</span>
-                        </div>
-                    `;
-                }
                 
                 const nonAuthDates = Object.keys(personData.nonAuthFlights).sort((a, b) => {
                     const [aMonth, aDay] = a.split('/').map(Number);
@@ -1539,38 +1733,44 @@
                 return;
             }
             
-            // 建立CSV內容
-            let csvContent = "日期,人員,人員類型,機號,B/G,機型,檢查,入境,出境,STA,STD,來自,飛往,備註\n";
+            let csvContent = "日期,人員,人員類型,機號,B/G,機型,檢查,入境,出境,STA,STD,來自,飛往\n";
             
-            // 對資料按日期和人員排序
             const sortedData = [...allData].sort((a, b) => {
-                // 先按日期排序
                 const [aMonth, aDay] = a.日期.split('/').map(Number);
                 const [bMonth, bDay] = b.日期.split('/').map(Number);
                 const dateCompare = (aMonth * 100 + aDay) - (bMonth * 100 + bDay);
                 
                 if (dateCompare !== 0) return dateCompare;
                 
-                // 再按人員類型排序（授權人員優先）
                 const typeCompare = b.人員類型.localeCompare(a.人員類型);
                 if (typeCompare !== 0) return typeCompare;
                 
-                // 最後按人員姓名排序
                 return a.人員.localeCompare(b.人員);
             });
             
             sortedData.forEach(item => {
-                // CSV格式：日期,人員,人員類型,機號,B/G,機型,檢查,入境,出境,STA,STD,來自,飛往,備註
-                // 所有欄位用引號包起來，因為可能包含逗號
-                csvContent += `"${item.日期}","${item.人員}","${item.人員類型}","${item.機號}","${item.B_G}","${item.機型}","${item.檢查}","${item.入境}","${item.出境}","${item.STA}","${item.STD}","${item.來自}","${item.飛往}","${item.REMARK || ''}"\n`;
+                const row = [
+                    `"${item.日期 || ''}"`,
+                    `"${item.人員 || ''}"`,
+                    `"${item.人員類型 || ''}"`,
+                    `"${item.機號 || ''}"`,
+                    `"${item.B_G || ''}"`,
+                    `"${item.機型 || ''}"`,
+                    `"${item.檢查 || ''}"`,
+                    `"${item.入境 || ''}"`,
+                    `"${item.出境 || ''}"`,
+                    `"${item.STA || ''}"`,
+                    `"${item.STD || ''}"`,
+                    `"${item.來自 || ''}"`,
+                    `"${item.飛往 || ''}"`
+                ];
+                csvContent += row.join(',') + '\n';
             });
             
-            // 建立下載連結
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             
-            // 取得檔案名稱
             const originalFileName = document.getElementById('fileInput').files[0]?.name || '航班資料';
             const fileName = originalFileName.replace(/\.[^/.]+$/, "") + '_航班分析.csv';
             
@@ -1600,7 +1800,6 @@
         // 添加除錯日誌
         function addDebugLog(message) {
             debugLog.push(`${new Date().toLocaleTimeString()}: ${message}`);
-            // 保持日誌在合理大小
             if (debugLog.length > 100) {
                 debugLog = debugLog.slice(-50);
             }
@@ -1623,9 +1822,8 @@
         
         // 初始化頁面
         document.addEventListener('DOMContentLoaded', function() {
-            // 綁定檔案選擇事件
             document.getElementById('fileInput').addEventListener('change', handleFileSelect);
         });
     </script>
 </body>
-</html>
+    </html>
